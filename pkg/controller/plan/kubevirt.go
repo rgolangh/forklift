@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	storagev1 "k8s.io/api/storage/v1"
 	"math/rand"
 	"net/http"
 	"os"
@@ -1690,7 +1691,9 @@ func (r *KubeVirt) guestConversionPod(vm *plan.VMStatus, vmVolumes []cnv.Volume,
 		err = vErr
 		return
 	}
-	if coldLocal {
+
+	isCopyOffload, err := r.IsCopyOffload()
+	if coldLocal && !isCopyOffload {
 		// mount the secret for the password and CA certificate
 		volumes = append(volumes, core.Volume{
 			Name: "secret-volume",
@@ -1706,11 +1709,13 @@ func (r *KubeVirt) guestConversionPod(vm *plan.VMStatus, vmVolumes []cnv.Volume,
 			MountPath: "/etc/secret",
 		})
 	} else {
+		// TODO - rgolan in-place is always needed in case of copy-offload and RDM disk
 		environment = append(environment,
 			core.EnvVar{
 				Name:  "V2V_inPlace",
 				Value: "1",
 			})
+
 	}
 	// VDDK image
 	var initContainers []core.Container
@@ -1748,12 +1753,15 @@ func (r *KubeVirt) guestConversionPod(vm *plan.VMStatus, vmVolumes []cnv.Volume,
 				Value: vm.NewName,
 			})
 	}
-	environment = append(environment,
-		core.EnvVar{
-			Name:  "LOCAL_MIGRATION",
-			Value: strconv.FormatBool(r.Destination.Provider.IsHost()),
-		},
-	)
+
+	if !isCopyOffload {
+		environment = append(environment,
+			core.EnvVar{
+				Name:  "LOCAL_MIGRATION",
+				Value: strconv.FormatBool(r.Destination.Provider.IsHost()),
+			},
+		)
+	}
 	// pod annotations
 	annotations := map[string]string{}
 	if r.Plan.Spec.TransferNetwork != nil {
@@ -2695,4 +2703,50 @@ func (r *KubeVirt) loadHosts() (hosts map[string]*api.Host, err error) {
 	hosts = hostMap
 
 	return
+}
+
+// IsCopyOffload is determined by the use of a storage class with copy-offload annotation on it
+// TODO rgolan - for now the check will be done if any disk target storage class has that storage class, this is obviously coarse
+// and should be per a disk's storage class, for example a disk from NFS or local doesn't support that
+// (specifically referring to vmkfstools xcopy for RDM)
+func (r *KubeVirt) IsCopyOffload() (bool, error) {
+	ref := r.Plan.Spec.Map.Storage
+	key := client.ObjectKey{
+		Namespace: ref.Namespace,
+		Name:      ref.Name,
+	}
+	sm := &api.StorageMap{}
+	err := r.Get(context.TODO(), key, sm)
+	if k8serr.IsNotFound(err) {
+		log.Error(err, "Failed to get storage map")
+		return false, err
+	}
+	log.Info("Identify storage class for storage maps")
+
+	sc := storagev1.StorageClass{}
+	scName := ""
+	if len(sm.Spec.Map) > 0 {
+		scName = sm.Spec.Map[0].Destination.StorageClass
+	}
+	storageClassList := &storagev1.StorageClassList{}
+	if err := r.List(context.TODO(), storageClassList, &client.ListOptions{}); err != nil {
+		log.Error(err, "Failed to list StorageClasses")
+		return false, err
+	}
+	// Iterate through StorageClasses to match the one from the map
+	for _, v := range storageClassList.Items {
+		if scName == "" {
+			if isDefault, ok := v.Annotations["storageclass.kubernetes.io/is-default-class"]; ok && isDefault == "true" {
+				sc = v
+				break
+			}
+		} else {
+			if scName == v.Name {
+				sc = v
+				break
+			}
+		}
+	}
+	_, ok := sc.Annotations["copy-offload"]
+	return ok, nil
 }

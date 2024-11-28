@@ -3,6 +3,8 @@ GOPATH ?= `go env GOPATH`
 GOBIN ?= $(GOPATH)/bin
 GO111MODULE = auto
 
+ENVTEST_K8S_VERSION = 1.31.0
+ENVTEST_VERSION ?= release-0.19
 
 CONTAINER_RUNTIME ?=
 
@@ -518,3 +520,36 @@ undeploy: kubectl
 		$(KUBECTL) -n $(REGISTRY_ORG) get rolebinding $${ROLE_BINDING} -o name 2>/dev/null | xargs -r $(KUBECTL) -n $(REGISTRY_ORG) delete ; \
 	done;
 	@echo "Done!"
+
+.PHONY: envtest
+envtest: $(ENVTEST) ## Download setup-envtest locally if necessary.
+$(ENVTEST): $(LOCALBIN)
+    $(call go-install-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest,$(ENVTEST_VERSION))
+
+integration-test: generate fmt vet manifests
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -i --bin-dir $(LOCALBIN) -p path)" go test ./pkg/controller/migration/... -coverprofile cover.out
+
+rgolan:
+	BLOCK_OVERHEAD="0" \
+	FILESYSTEM_OVERHEAD="10" \
+	MAX_VM_INFLIGHT="2" \
+	CLEANUP_RETRIES="10" \
+	SNAPSHOT_STATUS_CHECK_RATE_SECONDS="10" \
+	SNAPSHOT_REMOVAL_TIMEOUT_MINUTES="120" \
+	VDDK_JOB_ACTIVE_DEADLINE="300" \
+	PRECOPY_INTERVAL="2" \
+	OPENSHIFT="true" \
+	METRICS_PORT="8081" API_PORT="443" \
+	VIRT_V2V_IMAGE="registry.redhat.io/migration-toolkit-virtualization/mtv-virt-v2v-rhel9@sha256:7937d0969df43f0ca76053642d62f04dbdeedb2ee821f853f2deadb5ceb8eedc" \
+	KUBEVIRT_CLIENT_GO_SCHEME_REGISTRATION_VERSION="v1" \
+	API_HOST="forklift-inventory-openshift-mtv.apps.ocp-edge-cluster-0.qe.lab.redhat.com" \
+	ROLE="main" \
+	FEATURE_VSPHERE_INCREMENTAL_BACKUP="true" \
+	VSPHERE_OS_MAP="forklift-virt-customize" \
+	OVIRT_OS_MAP="forklift-ovirt-osmap" \
+	VIRT_CUSTOMIZE_MAP="forklift-virt-customize" \
+	VSPHERE_COLD_CDI="true" \
+	SSL_CERT_FILE="/home/rgolan/src/kubev2v/forklift/tls-ca-bundle.pem" \
+	./bin/forklift-controller
+
+	#dlv --listen=:5432 --headless=true --api-version=2 exec ./bin/forklift-controller \

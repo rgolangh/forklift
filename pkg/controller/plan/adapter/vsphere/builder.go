@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	storagev1 "k8s.io/api/storage/v1"
 	"net"
 	"net/netip"
 	liburl "net/url"
@@ -420,6 +421,12 @@ func (r *Builder) DataVolumes(vmRef ref.Ref, secret *core.Secret, _ *core.Config
 		thumbprint = h.Thumbprint
 	}
 
+	copyOffloadStorageClasses, err := r.FilterStorageClasses(func(sc storagev1.StorageClass) bool {
+		_, ok := sc.Annotations["copy-offload"]
+		return ok
+	})
+
+	log.Info("copy-offload: ", copyOffloadStorageClasses)
 	dsMapIn := r.Context.Map.Storage.Spec.Map
 	for i := range dsMapIn {
 		mapped := &dsMapIn[i]
@@ -430,6 +437,7 @@ func (r *Builder) DataVolumes(vmRef ref.Ref, secret *core.Secret, _ *core.Config
 			err = fErr
 			return
 		}
+
 		for _, disk := range vm.Disks {
 			if disk.Datastore.ID == ds.ID {
 				storageClass := mapped.Destination.StorageClass
@@ -477,12 +485,39 @@ func (r *Builder) DataVolumes(vmRef ref.Ref, secret *core.Secret, _ *core.Config
 					dvSpec.Storage.VolumeMode = &mapped.Destination.VolumeMode
 				}
 
+				// TODO rgolan - in case of copy-offload, set the volume mode to Block
+				classes, err := r.FilterStorageClasses(func(sc storagev1.StorageClass) bool {
+					if sc.Name == *dvSpec.Storage.StorageClassName {
+						_, found := sc.Annotations["copy-offload"]
+						return found
+					}
+					return false
+				})
+				if err != nil {
+					return nil, err
+				}
+				if len(classes) > 0 {
+					volumeMode := core.PersistentVolumeBlock
+					dvSpec.Storage.VolumeMode = &volumeMode
+				}
+				// rgolan - end of handling volumeMode = block
+
 				dv := dvTemplate.DeepCopy()
 				dv.Spec = dvSpec
 				if dv.ObjectMeta.Annotations == nil {
 					dv.ObjectMeta.Annotations = make(map[string]string)
 				}
 				dv.ObjectMeta.Annotations[planbase.AnnDiskSource] = r.baseVolume(disk.File)
+				for _, sc := range copyOffloadStorageClasses {
+					// If the DV can support copy-offload, because of its storage class, then mark it as one
+					isDefault, _ := sc.Annotations["storageclass.kubernetes.io/is-default-class"]
+					_, isCopyOffload := sc.Annotations["copy-offload"]
+					if ((storageClass == "" && isDefault == "true") || storageClass == sc.Name) && isCopyOffload {
+						dv.ObjectMeta.Annotations["copy-offload"] = r.baseVolume(disk.File)
+						break
+					}
+				}
+
 				dvs = append(dvs, *dv)
 			}
 		}
@@ -962,6 +997,7 @@ func (r *Builder) LunPersistentVolumeClaims(vmRef ref.Ref) (pvcs []core.Persiste
 	return
 }
 
+// TODO rgolan - if storage copy offload then maybe I can use this
 func (r *Builder) SupportsVolumePopulators() bool {
 	return false
 }
@@ -987,6 +1023,22 @@ func (r *Builder) SetPopulatorDataSourceLabels(vmRef ref.Ref, pvcs []*core.Persi
 }
 
 func (r *Builder) GetPopulatorTaskName(pvc *core.PersistentVolumeClaim) (taskName string, err error) {
-	err = planbase.VolumePopulatorNotSupportedError
+	// copy-offload only
+	taskName, _ = pvc.Annotations[planbase.AnnDiskSource]
 	return
+}
+
+func (r *Builder) FilterStorageClasses(filter func(sc storagev1.StorageClass) bool) ([]storagev1.StorageClass, error) {
+	filtered := []storagev1.StorageClass{}
+	storageClassList := &storagev1.StorageClassList{}
+	if err := r.List(context.TODO(), storageClassList, &client.ListOptions{}); err != nil {
+		log.Error(err, "Failed to list StorageClasses")
+		return filtered, err
+	}
+	for _, v := range storageClassList.Items {
+		if filter(v) {
+			filtered = append(filtered, v)
+		}
+	}
+	return filtered, nil
 }
