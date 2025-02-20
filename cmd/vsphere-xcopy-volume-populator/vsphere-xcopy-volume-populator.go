@@ -44,6 +44,7 @@ var (
 	kubeconfig   string
 
 	showVersion bool
+	namespace   string
 
 	clientSet *kubernetes.Clientset
 )
@@ -74,7 +75,7 @@ func main() {
 		klog.Fatalf("Failed to create a remote esxcli populator: %s", err)
 	}
 
-	volumeHandle, err := getVolumeHandle(clientSet, targetNamespace, targetNamespace, targetPVC)
+	volumeHandle, err := getVolumeHandle(clientSet, targetNamespace, namespace, targetPVC)
 	if err != nil {
 		klog.Fatalf("Failed to fetch the volume handle details from the target pvc %s: %s", targetPVC, err)
 	}
@@ -182,6 +183,7 @@ func handleArgs() {
 	flag.StringVar(&metricsPath, "metrics-path", "/metrics", "The HTTP path where prometheus metrics will be exposed. Default is `/metrics`.")
 	// Other args
 	flag.BoolVar(&showVersion, "version", false, "display the version string")
+	flag.StringVar(&namespace, "namespace", "", "Namespace to deploy controller")
 	flag.Parse()
 
 	if showVersion {
@@ -215,9 +217,7 @@ func handleArgs() {
 		os.Exit(2)
 	}
 
-	klog.Infof("Current namespace %s ", targetNamespace)
 	if secretRef != "" {
-		secret, err := clientSet.CoreV1().Secrets(targetNamespace).Get(context.Background(), secretRef, metav1.GetOptions{})
 		if err != nil {
 			klog.Fatalf("fail to fetch the secret %s: %s", secretRef, err)
 		}
