@@ -14,7 +14,7 @@ type Par3Clonner struct {
 
 // EnsureClonnerIgroup creates or update an initiator group with the clonnerIqn
 func (c *Par3Clonner) EnsureClonnerIgroup(initiatorGroup string, clonnerIqn string) error {
-	return fmt.Errorf("par3Clonner not yet implemented")
+	return c.client.EnsureHostWithIqn(initiatorGroup, clonnerIqn)
 }
 
 // Map is responsible to mapping an initiator group to a LUN

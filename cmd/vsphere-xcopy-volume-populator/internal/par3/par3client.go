@@ -15,6 +15,7 @@ type Par3Client interface {
 	GetSessionKey() (string, error)
 	EnsureLunMapped(initiatorGroup string, targetLUN populator.LUN) error
 	LunUnmap(ctx context.Context, initiatorGroupName, lunName string) error
+	EnsureHostWithIqn(initiatorGroupName string, iqn string) error
 }
 
 type Par3ClientWsImpl struct {
@@ -23,6 +24,93 @@ type Par3ClientWsImpl struct {
 	Password   string
 	Username   string
 	HTTPClient *http.Client
+}
+
+func (p *Par3ClientWsImpl) EnsureHostWithIqn(initiatorGroupName string, iqn string) error {
+	exists, err := p.hostExists(initiatorGroupName)
+	if err != nil {
+		return fmt.Errorf("failed to check host existence: %w", err)
+	}
+
+	if exists {
+		return nil
+	}
+
+	return p.createHost(initiatorGroupName, iqn)
+}
+
+func (p *Par3ClientWsImpl) hostExists(hostname string) (bool, error) {
+	url := fmt.Sprintf("%s/api/v1/hosts/%s", p.BaseURL, hostname)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return false, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("X-HP3PAR-WSAPI-SessionKey", p.SessionKey)
+
+	resp, err := p.HTTPClient.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	resp, err = p.handleUnauthorizedSessionKey(resp, req, err)
+	if err != nil {
+		return false, err
+	}
+
+	if resp.StatusCode == http.StatusOK {
+		return true, nil
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return false, nil
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	return false, fmt.Errorf("unexpected response: %d, body: %s", resp.StatusCode, string(body))
+}
+
+func (p *Par3ClientWsImpl) createHost(hostname, iqn string) error {
+	url := fmt.Sprintf("%s/api/v1/hosts", p.BaseURL)
+
+	requestBody := map[string]interface{}{
+		"name":    hostname,
+		"persona": 2,
+		"iSCSIPaths": []map[string]string{
+			{"iqn": iqn},
+		},
+	}
+
+	jsonBody, err := json.Marshal(requestBody)
+	if err != nil {
+		return fmt.Errorf("failed to encode JSON: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-HP3PAR-WSAPI-SessionKey", p.SessionKey)
+
+	resp, err := p.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	resp, err = p.handleUnauthorizedSessionKey(resp, req, err)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode == http.StatusCreated {
+		return nil
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("failed to create host: status %d, body: %s", resp.StatusCode, string(body))
 }
 
 func (p *Par3ClientWsImpl) GetSessionKey() (string, error) {
@@ -54,9 +142,8 @@ func (p *Par3ClientWsImpl) GetSessionKey() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to read response: %w", err)
 	}
-	// Handle authentication errors explicitly
+
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		// Try to parse error response
 		var errorResp struct {
 			Code int    `json:"code"`
 			Desc string `json:"desc"`
@@ -154,18 +241,9 @@ func (p *Par3ClientWsImpl) LunUnmap(ctx context.Context, initiatorGroupName, lun
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusUnauthorized {
-		log.Println("Session expired (Code 6). Attempting to refresh session key...")
-		if _, err := p.GetSessionKey(); err != nil {
-			return fmt.Errorf("failed to refresh session key: %w", err)
-		}
-
-		req.Header.Set("X-HP3PAR-WSAPI-SessionKey", p.SessionKey)
-		resp, err = p.HTTPClient.Do(req)
-		if err != nil {
-			return fmt.Errorf("retry request failed: %w", err)
-		}
-		defer resp.Body.Close()
+	resp, err = p.handleUnauthorizedSessionKey(resp, req, err)
+	if err != nil {
+		return err
 	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
@@ -238,6 +316,11 @@ func (p *Par3ClientWsImpl) GetLunID(lunName, initiatorGroupName string) (int, er
 	}
 	defer resp.Body.Close()
 
+	resp, err = p.handleUnauthorizedSessionKey(resp, req, err)
+	if err != nil {
+		return 0, err
+	}
+
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return 0, fmt.Errorf("failed to read response: %w", err)
@@ -262,4 +345,21 @@ func (p *Par3ClientWsImpl) GetLunID(lunName, initiatorGroupName string) (int, er
 	}
 
 	return 0, fmt.Errorf("LUN ID not found for volume %s and host %s", lunName, initiatorGroupName)
+}
+
+func (p *Par3ClientWsImpl) handleUnauthorizedSessionKey(resp *http.Response, req *http.Request, err error) (*http.Response, error) {
+	if resp.StatusCode == http.StatusUnauthorized {
+		log.Println("Session expired (Code 6). Attempting to refresh session key...")
+		if _, err := p.GetSessionKey(); err != nil {
+			return nil, fmt.Errorf("failed to refresh session key: %w", err)
+		}
+
+		req.Header.Set("X-HP3PAR-WSAPI-SessionKey", p.SessionKey)
+		resp, err = p.HTTPClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("retry request failed: %w", err)
+		}
+		defer resp.Body.Close()
+	}
+	return resp, nil
 }
