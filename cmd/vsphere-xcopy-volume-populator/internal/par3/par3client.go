@@ -16,6 +16,8 @@ type Par3Client interface {
 	EnsureLunMapped(initiatorGroup string, targetLUN populator.LUN) error
 	LunUnmap(ctx context.Context, initiatorGroupName, lunName string) error
 	EnsureHostWithIqn(initiatorGroupName string, iqn string) error
+	EnsureHostSetExists(hostSetName string) error
+	AddHostToHostSet(hostSetName string, hostName string) error
 }
 
 type Par3ClientWsImpl struct {
@@ -46,7 +48,8 @@ func (p *Par3ClientWsImpl) hostExists(hostname string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("X-HP3PAR-WSAPI-SessionKey", p.SessionKey)
+
+	p.setReqHeadersWithSessionKey(req)
 
 	resp, err := p.HTTPClient.Do(req)
 	if err != nil {
@@ -91,9 +94,7 @@ func (p *Par3ClientWsImpl) createHost(hostname, iqn string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-HP3PAR-WSAPI-SessionKey", p.SessionKey)
-
+	p.setReqHeadersWithSessionKey(req)
 	resp, err := p.HTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
@@ -195,8 +196,7 @@ func (p *Par3ClientWsImpl) EnsureLunMapped(initiatorGroup string, targetLUN popu
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-HP3PAR-WSAPI-SessionKey", p.SessionKey)
+	p.setReqHeadersWithSessionKey(req)
 
 	resp, err := p.HTTPClient.Do(req)
 	if err != nil {
@@ -233,7 +233,7 @@ func (p *Par3ClientWsImpl) LunUnmap(ctx context.Context, initiatorGroupName, lun
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("X-HP3PAR-WSAPI-SessionKey", p.SessionKey)
+	p.setReqHeadersWithSessionKey(req)
 
 	resp, err := p.HTTPClient.Do(req)
 	if err != nil {
@@ -261,7 +261,7 @@ func (p *Par3ClientWsImpl) GetFreeLunID(initiatorGroupName string) (int, error) 
 	if err != nil {
 		return 0, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("X-HP3PAR-WSAPI-SessionKey", p.SessionKey)
+	p.setReqHeadersWithSessionKey(req)
 
 	resp, err := p.HTTPClient.Do(req)
 	if err != nil {
@@ -308,7 +308,7 @@ func (p *Par3ClientWsImpl) GetLunID(lunName, initiatorGroupName string) (int, er
 	if err != nil {
 		return 0, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("X-HP3PAR-WSAPI-SessionKey", p.SessionKey)
+	p.setReqHeadersWithSessionKey(req)
 
 	resp, err := p.HTTPClient.Do(req)
 	if err != nil {
@@ -354,7 +354,7 @@ func (p *Par3ClientWsImpl) handleUnauthorizedSessionKey(resp *http.Response, req
 			return nil, fmt.Errorf("failed to refresh session key: %w", err)
 		}
 
-		req.Header.Set("X-HP3PAR-WSAPI-SessionKey", p.SessionKey)
+		p.setReqHeadersWithSessionKey(req)
 		resp, err = p.HTTPClient.Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("retry request failed: %w", err)
@@ -362,4 +362,102 @@ func (p *Par3ClientWsImpl) handleUnauthorizedSessionKey(resp *http.Response, req
 		defer resp.Body.Close()
 	}
 	return resp, nil
+}
+
+func (p *Par3ClientWsImpl) EnsureHostSetExists(hostSetName string) error {
+	url := fmt.Sprintf("%s/api/v1/hostsets/%s", p.BaseURL, hostSetName)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	p.setReqHeadersWithSessionKey(req)
+	resp, err := p.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		return nil // Host set already exists
+	}
+
+	createURL := fmt.Sprintf("%s/api/v1/hostsets", p.BaseURL)
+	requestBody := map[string]interface{}{
+		"name": hostSetName,
+	}
+
+	jsonBody, err := json.Marshal(requestBody)
+	if err != nil {
+		return fmt.Errorf("failed to encode JSON: %w", err)
+	}
+
+	req, err = http.NewRequest("POST", createURL, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	p.setReqHeadersWithSessionKey(req)
+
+	resp, err = p.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	resp, err = p.handleUnauthorizedSessionKey(resp, req, err)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to create host set: status %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+func (p *Par3ClientWsImpl) setReqHeadersWithSessionKey(req *http.Request) {
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-HP3PAR-WSAPI-SessionKey", p.SessionKey)
+}
+
+func (p *Par3ClientWsImpl) AddHostToHostSet(hostSetName string, hostName string) error {
+	url := fmt.Sprintf("%s/api/v1/hostsets/%s", p.BaseURL, hostSetName)
+
+	requestBody := map[string]interface{}{
+		"action": "add",
+		"setmembers": []string{
+			hostName,
+		},
+	}
+
+	jsonBody, err := json.Marshal(requestBody)
+	if err != nil {
+		return fmt.Errorf("failed to encode JSON: %w", err)
+	}
+
+	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	p.setReqHeadersWithSessionKey(req)
+
+	resp, err := p.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	resp, err = p.handleUnauthorizedSessionKey(resp, req, err)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to add host to host set: status %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
 }

@@ -6,7 +6,7 @@ import (
 	"github.com/kubev2v/forklift/cmd/vsphere-xcopy-volume-populator/internal/populator"
 )
 
-const XCOPY_CLONNER_GROUP = "xcopy-service-vms"
+// const XCOPY_CLONNER_GROUP = "xcopy-service-vms"
 
 type Par3Clonner struct {
 	client Par3Client
@@ -14,7 +14,20 @@ type Par3Clonner struct {
 
 // EnsureClonnerIgroup creates or update an initiator group with the clonnerIqn
 func (c *Par3Clonner) EnsureClonnerIgroup(initiatorGroup string, clonnerIqn string) error {
-	return c.client.EnsureHostWithIqn(initiatorGroup, clonnerIqn)
+	err := c.client.EnsureHostWithIqn(initiatorGroup, clonnerIqn)
+	if err != nil {
+		return fmt.Errorf("failed to ensure host with IQN: %w", err)
+	}
+
+	err = c.client.EnsureHostSetExists(initiatorGroup)
+	if err != nil {
+		return fmt.Errorf("failed to ensure host set: %w", err)
+	}
+
+	err = c.client.AddHostToHostSet(initiatorGroup, initiatorGroup)
+	if err != nil {
+		return fmt.Errorf("failed to add host to host set: %w", err)
+	}
 }
 
 // Map is responsible to mapping an initiator group to a LUN

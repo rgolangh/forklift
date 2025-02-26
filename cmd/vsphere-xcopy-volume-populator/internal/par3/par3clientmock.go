@@ -3,16 +3,16 @@ package par3
 import (
 	"context"
 	"fmt"
+	"github.com/kubev2v/forklift/cmd/vsphere-xcopy-volume-populator/internal/populator"
 	"log"
 	"sync"
-
-	"github.com/kubev2v/forklift/cmd/vsphere-xcopy-volume-populator/internal/populator"
 )
 
 type MockPar3Client struct {
 	SessionKey  string
-	LUNMappings map[string]map[string]int // Maps initiator group -> volume -> LUN ID
-	UsedLUNs    map[string]map[int]bool   // Maps initiator group -> used LUN IDs
+	LUNMappings map[string]map[string]int
+	UsedLUNs    map[string]map[int]bool
+	Hosts       map[string]string
 	Mutex       sync.Mutex
 }
 
@@ -21,6 +21,7 @@ func NewMockPar3Client() *MockPar3Client {
 		SessionKey:  "mock-session-key",
 		LUNMappings: make(map[string]map[string]int),
 		UsedLUNs:    make(map[string]map[int]bool),
+		Hosts:       make(map[string]string),
 	}
 }
 
@@ -66,6 +67,30 @@ func (m *MockPar3Client) LunUnmap(ctx context.Context, initiatorGroupName, lunNa
 	}
 
 	return fmt.Errorf("mock: LUN %s not found for initiator group %s", lunName, initiatorGroupName)
+}
+
+func (m *MockPar3Client) EnsureHostWithIqn(initiatorGroupName string, iqn string) error {
+	m.Mutex.Lock()
+	defer m.Mutex.Unlock()
+
+	if exists, _ := m.hostExists(initiatorGroupName); exists {
+		return nil
+	}
+
+	return m.createHost(initiatorGroupName, iqn)
+}
+
+func (m *MockPar3Client) hostExists(hostname string) (bool, error) {
+	if _, exists := m.Hosts[hostname]; exists {
+		return true, nil
+	}
+	return false, nil
+}
+
+func (m *MockPar3Client) createHost(hostname, iqn string) error {
+	m.Hosts[hostname] = iqn
+	log.Printf("Mock: Created host %s with IQN %s", hostname, iqn)
+	return nil
 }
 
 func (m *MockPar3Client) GetFreeLunID(initiatorGroupName string) (int, error) {

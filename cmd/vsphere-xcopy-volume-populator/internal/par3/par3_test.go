@@ -36,4 +36,22 @@ func TestPar3Clonner(t *testing.T) {
 		_, err = mockClient.GetLunID(targetLUN.Name, initiatorGroup)
 		assert.Error(t, err, "Expected an error because LUN should be unmapped")
 	})
+
+	t.Run("EnsureClonnerIgroup", func(t *testing.T) {
+		mockClient := NewMockPar3Client()
+		clonner := &Par3Clonner{client: mockClient}
+		hostName := "TestHost"
+		iqn := "iqn.1993-08.org.debian:01:test1234"
+
+		t.Run("Ensure Clonner Igroup", func(t *testing.T) {
+			err := clonner.EnsureClonnerIgroup(hostName, iqn)
+			assert.NoError(t, err, "Expected no error when ensuring Clonner Igroup")
+
+			_, hostExists := mockClient.Hosts[hostName]
+			assert.True(t, hostExists, "Expected host to exist")
+
+			_, hostSetExists := mockClient.Hosts[hostName]
+			assert.True(t, hostSetExists, "Expected host set to exist")
+		})
+	})
 }
