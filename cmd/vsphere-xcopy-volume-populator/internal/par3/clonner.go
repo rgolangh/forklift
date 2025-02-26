@@ -28,6 +28,8 @@ func (c *Par3Clonner) EnsureClonnerIgroup(initiatorGroup string, clonnerIqn stri
 	if err != nil {
 		return fmt.Errorf("failed to add host to host set: %w", err)
 	}
+
+	return nil
 }
 
 // Map is responsible to mapping an initiator group to a LUN
@@ -37,7 +39,7 @@ func (c *Par3Clonner) Map(initiatorGroup string, targetLUN populator.LUN) error 
 
 // UnMap is responsible to unmapping an initiator group from a LUN
 func (c *Par3Clonner) UnMap(initiatorGroup string, targetLUN populator.LUN) error {
-	return c.client.LunUnmap(context.TODO(), initiatorGroup, fmt.Sprintf("/vol/%s/lun0", targetLUN.Name))
+	return c.client.LunUnmap(context.TODO(), initiatorGroup, targetLUN.Name)
 }
 
 // Return initiatorGroups the LUN is mapped to

@@ -13,6 +13,7 @@ type MockPar3Client struct {
 	LUNMappings map[string]map[string]int
 	UsedLUNs    map[string]map[int]bool
 	Hosts       map[string]string
+	HostSets    map[string][]string
 	Mutex       sync.Mutex
 }
 
@@ -22,6 +23,7 @@ func NewMockPar3Client() *MockPar3Client {
 		LUNMappings: make(map[string]map[string]int),
 		UsedLUNs:    make(map[string]map[int]bool),
 		Hosts:       make(map[string]string),
+		HostSets:    make(map[string][]string),
 	}
 }
 
@@ -32,9 +34,6 @@ func (m *MockPar3Client) GetSessionKey() (string, error) {
 }
 
 func (m *MockPar3Client) EnsureLunMapped(initiatorGroup string, targetLUN populator.LUN) error {
-	m.Mutex.Lock()
-	defer m.Mutex.Unlock()
-
 	lunID, err := m.GetFreeLunID(initiatorGroup)
 	if err != nil {
 		return err
@@ -55,9 +54,6 @@ func (m *MockPar3Client) EnsureLunMapped(initiatorGroup string, targetLUN popula
 }
 
 func (m *MockPar3Client) LunUnmap(ctx context.Context, initiatorGroupName, lunName string) error {
-	m.Mutex.Lock()
-	defer m.Mutex.Unlock()
-
 	if lunID, exists := m.LUNMappings[initiatorGroupName][lunName]; exists {
 		delete(m.LUNMappings[initiatorGroupName], lunName)
 		delete(m.UsedLUNs[initiatorGroupName], lunID)
@@ -70,14 +66,40 @@ func (m *MockPar3Client) LunUnmap(ctx context.Context, initiatorGroupName, lunNa
 }
 
 func (m *MockPar3Client) EnsureHostWithIqn(initiatorGroupName string, iqn string) error {
-	m.Mutex.Lock()
-	defer m.Mutex.Unlock()
-
 	if exists, _ := m.hostExists(initiatorGroupName); exists {
 		return nil
 	}
 
 	return m.createHost(initiatorGroupName, iqn)
+}
+func (m *MockPar3Client) EnsureHostSetExists(hostSetName string) error {
+	if _, exists := m.HostSets[hostSetName]; exists {
+		return nil
+	}
+
+	m.HostSets[hostSetName] = []string{}
+	log.Printf("Mock: Created host set %s", hostSetName)
+	return nil
+}
+
+func (m *MockPar3Client) AddHostToHostSet(hostSetName string, hostName string) error {
+	if _, exists := m.HostSets[hostSetName]; !exists {
+		return fmt.Errorf("mock: host set %s does not exist", hostSetName)
+	}
+
+	if _, exists := m.Hosts[hostName]; !exists {
+		return fmt.Errorf("mock: host %s does not exist", hostName)
+	}
+
+	for _, existingHost := range m.HostSets[hostSetName] {
+		if existingHost == hostName {
+			return nil
+		}
+	}
+
+	m.HostSets[hostSetName] = append(m.HostSets[hostSetName], hostName)
+	log.Printf("Mock: Added host %s to host set %s", hostName, hostSetName)
+	return nil
 }
 
 func (m *MockPar3Client) hostExists(hostname string) (bool, error) {
@@ -94,9 +116,6 @@ func (m *MockPar3Client) createHost(hostname, iqn string) error {
 }
 
 func (m *MockPar3Client) GetFreeLunID(initiatorGroupName string) (int, error) {
-	m.Mutex.Lock()
-	defer m.Mutex.Unlock()
-
 	if _, exists := m.UsedLUNs[initiatorGroupName]; !exists {
 		m.UsedLUNs[initiatorGroupName] = make(map[int]bool)
 	}
@@ -111,9 +130,6 @@ func (m *MockPar3Client) GetFreeLunID(initiatorGroupName string) (int, error) {
 }
 
 func (m *MockPar3Client) GetLunID(lunName, initiatorGroupName string) (int, error) {
-	m.Mutex.Lock()
-	defer m.Mutex.Unlock()
-
 	if lunID, exists := m.LUNMappings[initiatorGroupName][lunName]; exists {
 		return lunID, nil
 	}

@@ -30,7 +30,10 @@ func TestPar3Clonner(t *testing.T) {
 	})
 
 	t.Run("Unmap LUN", func(t *testing.T) {
-		err := clonner.UnMap(initiatorGroup, targetLUN)
+		err := clonner.Map(initiatorGroup, targetLUN)
+		assert.NoError(t, err, "Expected no error when mapping LUN")
+
+		err = clonner.UnMap(initiatorGroup, targetLUN)
 		assert.NoError(t, err, "Expected no error when unmapping LUN")
 
 		_, err = mockClient.GetLunID(targetLUN.Name, initiatorGroup)
@@ -43,15 +46,13 @@ func TestPar3Clonner(t *testing.T) {
 		hostName := "TestHost"
 		iqn := "iqn.1993-08.org.debian:01:test1234"
 
-		t.Run("Ensure Clonner Igroup", func(t *testing.T) {
-			err := clonner.EnsureClonnerIgroup(hostName, iqn)
-			assert.NoError(t, err, "Expected no error when ensuring Clonner Igroup")
+		err := clonner.EnsureClonnerIgroup(hostName, iqn)
+		assert.NoError(t, err, "Expected no error when ensuring Clonner Igroup")
 
-			_, hostExists := mockClient.Hosts[hostName]
-			assert.True(t, hostExists, "Expected host to exist")
+		_, hostExists := mockClient.Hosts[hostName]
+		assert.True(t, hostExists, "Expected host to exist")
 
-			_, hostSetExists := mockClient.Hosts[hostName]
-			assert.True(t, hostSetExists, "Expected host set to exist")
-		})
+		_, hostSetExists := mockClient.Hosts[hostName]
+		assert.True(t, hostSetExists, "Expected host set to exist")
 	})
 }
