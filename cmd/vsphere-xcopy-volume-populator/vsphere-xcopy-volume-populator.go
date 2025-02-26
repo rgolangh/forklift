@@ -216,8 +216,8 @@ func handleArgs() {
 	}
 
 	klog.Infof("Current namespace %s ", targetNamespace)
-	secret, err := clientSet.CoreV1().Secrets(targetNamespace).Get(context.Background(), secretRef, metav1.GetOptions{})
 	if secretRef != "" {
+		secret, err := clientSet.CoreV1().Secrets(targetNamespace).Get(context.Background(), secretRef, metav1.GetOptions{})
 		if err != nil {
 			klog.Fatalf("fail to fetch the secret %s: %s", secretRef, err)
 		}
