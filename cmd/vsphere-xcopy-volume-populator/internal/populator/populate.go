@@ -26,6 +26,8 @@ type LUN struct {
 	IQN string
 	// Storage provider ID in hex
 	ProviderID string
+	// the volume handle as set by the CSI driver field spec.volumeHandle
+	VolumeHandle string
 }
 
 // VMDisk is the target VMDisk in vmware

@@ -29,6 +29,9 @@ func (m *WatchManager) Ensure(
 	provider *api.Provider,
 	resource interface{},
 	handler libweb.EventHandler) (watch *libweb.Watch, err error) {
+	//
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
 	if m.providerMap == nil {
 		m.providerMap = make(ProviderMap)
 	}
@@ -58,7 +61,11 @@ func (m *WatchManager) Ensure(
 	return
 }
 
+// A provider has been deleted.
+// Delete associated watches.
 func (m *WatchManager) Deleted(provider *api.Provider) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
 	if watchMap, found := m.providerMap[provider.UID]; found {
 		for _, w := range watchMap {
 			w.End()
