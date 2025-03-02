@@ -26,6 +26,13 @@ func NewMockPar3Client() *MockPar3Client {
 		HostSets:    make(map[string][]string),
 	}
 }
+func (m *MockPar3Client) GetLunDetailsByVolumeName(volumeName string) (name string, serialNumber string, err error) {
+	return "", "", nil
+}
+
+func (m *MockPar3Client) CurrentMappedGroups(volumeName string) ([]string, error) {
+	return []string{}, nil
+}
 
 func (m *MockPar3Client) GetSessionKey() (string, error) {
 	log.Println("Mock: GetSessionKey called")
@@ -53,7 +60,7 @@ func (m *MockPar3Client) EnsureLunMapped(initiatorGroup string, targetLUN popula
 	return nil
 }
 
-func (m *MockPar3Client) GetLunSerialNumber(initiatorGroup string) (string, error) {
+func (m *MockPar3Client) GetLunByVolumeName(initiatorGroup string) (string, error) {
 	return "", nil
 }
 

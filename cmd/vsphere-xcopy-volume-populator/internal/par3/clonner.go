@@ -50,21 +50,23 @@ func (c *Par3Clonner) UnMap(initiatorGroup string, targetLUN populator.LUN) erro
 }
 
 // Return initiatorGroups the LUN is mapped to
-func (c *Par3Clonner) CurrentMappedGroups(targetLUN populator.LUN) ([]string, error) {
-	return []string{}, fmt.Errorf("Par3Clonner currentMappedGroups not implemented yet")
+func (p *Par3Clonner) CurrentMappedGroups(targetLUN populator.LUN) ([]string, error) {
+	res, err := p.client.CurrentMappedGroups(targetLUN.Name)
+	if err != nil {
+		return []string{}, fmt.Errorf("failed to get current mapped groups: %w", err)
+	}
+	return res, nil
 }
 
 func (c *Par3Clonner) ResolveVolumeHandleToLUN(volumeHandle string) (populator.LUN, error) {
-	serialNumber, err := c.client.GetLunSerialNumber(volumeHandle)
+	name, serial, err := c.client.GetLunDetailsByVolumeName(volumeHandle)
 	if err != nil {
 		return populator.LUN{}, err
 	}
-	fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<")
-	fmt.Println(serialNumber)
 
 	// in RHEL lsblk needs that swap. In fedora it doesn't
 	//serialNumber :=  strings.ReplaceAll(l.SerialNumber, "?", "\\\\x3f")
-	lun := populator.LUN{Name: volumeHandle, VolumeHandle: volumeHandle, SerialNumber: serialNumber, ProviderID: "60002ac"}
+	lun := populator.LUN{Name: name, VolumeHandle: volumeHandle, SerialNumber: serial, ProviderID: "60002ac"}
 	return lun, nil
 
 	//return populator.LUN{}, fmt.Errorf("Par3Clonner ResolveVolumeHandle not implemented yet")

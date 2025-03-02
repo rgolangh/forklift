@@ -33,7 +33,6 @@ func NewWithRemoteEsxcli(storageApi StorageApi, vsphereHostname, vsphereUsername
 }
 
 func (p *RemoteEsxcliPopulator) Populate(sourceVMDKFile string, volumeHandle string) error {
-	fmt.Println(">>>>>>>>>>>>>>>>>>>>")
 	vmDisk, err := ParseVmdkPath(sourceVMDKFile)
 	if err != nil {
 		return err
@@ -45,7 +44,6 @@ func (p *RemoteEsxcliPopulator) Populate(sourceVMDKFile string, volumeHandle str
 		return err
 	}
 
-	fmt.Println(">>>>>>>>>>>>>>>>>>>>2")
 	originalInitiatorGroups, err := p.StorageApi.CurrentMappedGroups(lun)
 	if err != nil {
 		return fmt.Errorf("failed to fetch the current initiator groups of the lun %s: %w", lun.Name, err)
@@ -54,7 +52,6 @@ func (p *RemoteEsxcliPopulator) Populate(sourceVMDKFile string, volumeHandle str
 	targetLUN := fmt.Sprintf("/vmfs/devices/disks/naa.%s%x", lun.ProviderID, lun.SerialNumber)
 	klog.Infof("resolved lun serial number %s with IQN %s to lun %s", lun.SerialNumber, lun.IQN, targetLUN)
 
-	fmt.Println(">>>>>>>>>>>>>>>>>>>>3")
 	host, err := p.VSphereClient.GetEsxByVm(context.Background(), vmDisk.VMName)
 	if err != nil {
 		return err
@@ -86,10 +83,18 @@ func (p *RemoteEsxcliPopulator) Populate(sourceVMDKFile string, volumeHandle str
 		return fmt.Errorf("failed to map lun %s to initiator group %s: %w", lun, xcopyInitiatorGroup, err)
 	}
 	defer func() {
-		p.StorageApi.UnMap(xcopyInitiatorGroup, lun)
+		shouldUnmap := true
 		for _, group := range originalInitiatorGroups {
-			p.StorageApi.Map(group, lun)
+			if xcopyInitiatorGroup == group {
+				shouldUnmap = false
+			}
 		}
+		if shouldUnmap {
+			p.StorageApi.UnMap(xcopyInitiatorGroup, lun)
+		}
+		//for _, group := range originalInitiatorGroups {
+		//	p.StorageApi.Map(group, lun)
+		//}
 
 	}()
 
