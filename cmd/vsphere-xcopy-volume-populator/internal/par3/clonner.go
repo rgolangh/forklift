@@ -12,6 +12,13 @@ type Par3Clonner struct {
 	client Par3Client
 }
 
+func NewPar3Clonner(storageHostname, storageUsername, storagePassword string) (Par3Clonner, error) {
+	clon := NewPar3ClientWsImpl(storageHostname, storageUsername, storagePassword)
+	return Par3Clonner{
+		client: &clon,
+	}, nil
+}
+
 // EnsureClonnerIgroup creates or update an initiator group with the clonnerIqn
 func (c *Par3Clonner) EnsureClonnerIgroup(initiatorGroup string, clonnerIqn string) error {
 	err := c.client.EnsureHostWithIqn(initiatorGroup, clonnerIqn)
@@ -45,4 +52,20 @@ func (c *Par3Clonner) UnMap(initiatorGroup string, targetLUN populator.LUN) erro
 // Return initiatorGroups the LUN is mapped to
 func (c *Par3Clonner) CurrentMappedGroups(targetLUN populator.LUN) ([]string, error) {
 	return []string{}, fmt.Errorf("Par3Clonner currentMappedGroups not implemented yet")
+}
+
+func (c *Par3Clonner) ResolveVolumeHandleToLUN(volumeHandle string) (populator.LUN, error) {
+	serialNumber, err := c.client.GetLunSerialNumber(volumeHandle)
+	if err != nil {
+		return populator.LUN{}, err
+	}
+	fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<")
+	fmt.Println(serialNumber)
+
+	// in RHEL lsblk needs that swap. In fedora it doesn't
+	//serialNumber :=  strings.ReplaceAll(l.SerialNumber, "?", "\\\\x3f")
+	lun := populator.LUN{Name: volumeHandle, VolumeHandle: volumeHandle, SerialNumber: serialNumber, ProviderID: "60002ac"}
+	return lun, nil
+
+	//return populator.LUN{}, fmt.Errorf("Par3Clonner ResolveVolumeHandle not implemented yet")
 }

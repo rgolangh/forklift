@@ -202,6 +202,15 @@ test-copy-using-cli: build
 		--secret-ref=populator-secret \
 		--kubeconfig=$$KUBECONFIG
 
+test-copy-using-cli-3par: build
+	bin/vsphere-xcopy-volume-populator \
+		--source-vmdk="[eco-iscsi-ds1] 3par/3par.vmdk" \
+	    --target-pvc=test1\
+		--target-namespace=default \
+		--storage-vendor=par3 \
+		--secret-ref=populator-secret \
+		--kubeconfig=$$KUBECONFIG
+
 .PHONY: vmkfstools-wrapper
 vmkfstools-wrapper:
 	vmkfstools-wrapper/create-vib.sh

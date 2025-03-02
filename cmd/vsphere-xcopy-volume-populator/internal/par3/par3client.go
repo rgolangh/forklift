@@ -3,6 +3,7 @@ package par3
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"github.com/kubev2v/forklift/cmd/vsphere-xcopy-volume-populator/internal/populator"
@@ -18,6 +19,7 @@ type Par3Client interface {
 	EnsureHostWithIqn(initiatorGroupName string, iqn string) error
 	EnsureHostSetExists(hostSetName string) error
 	AddHostToHostSet(hostSetName string, hostName string) error
+	GetLunSerialNumber(lunName string) (string, error)
 }
 
 type Par3ClientWsImpl struct {
@@ -26,6 +28,19 @@ type Par3ClientWsImpl struct {
 	Password   string
 	Username   string
 	HTTPClient *http.Client
+}
+
+func NewPar3ClientWsImpl(storageHostname, storageUsername, storagePassword string) Par3ClientWsImpl {
+	return Par3ClientWsImpl{
+		BaseURL:  storageHostname,
+		Password: storagePassword,
+		Username: storageUsername,
+		HTTPClient: &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // Disable SSL verification
+			},
+		},
+	}
 }
 
 func (p *Par3ClientWsImpl) EnsureHostWithIqn(initiatorGroupName string, iqn string) error {
@@ -56,11 +71,6 @@ func (p *Par3ClientWsImpl) hostExists(hostname string) (bool, error) {
 		return false, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
-
-	resp, err = p.handleUnauthorizedSessionKey(resp, req, err)
-	if err != nil {
-		return false, err
-	}
 
 	if resp.StatusCode == http.StatusOK {
 		return true, nil
@@ -94,17 +104,12 @@ func (p *Par3ClientWsImpl) createHost(hostname, iqn string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	p.setReqHeadersWithSessionKey(req)
-	resp, err := p.HTTPClient.Do(req)
+
+	resp, err := p.doRequest(req, "createHost")
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
-
-	resp, err = p.handleUnauthorizedSessionKey(resp, req, err)
-	if err != nil {
-		return err
-	}
 
 	if resp.StatusCode == http.StatusCreated {
 		return nil
@@ -261,18 +266,6 @@ func (p *Par3ClientWsImpl) GetFreeLunID(initiatorGroupName string) (int, error) 
 	if err != nil {
 		return 0, fmt.Errorf("failed to create request: %w", err)
 	}
-	p.setReqHeadersWithSessionKey(req)
-
-	resp, err := p.HTTPClient.Do(req)
-	if err != nil {
-		return 0, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return 0, fmt.Errorf("failed to read response: %w", err)
-	}
 
 	var response struct {
 		Members []struct {
@@ -280,9 +273,9 @@ func (p *Par3ClientWsImpl) GetFreeLunID(initiatorGroupName string) (int, error) 
 			Hostname string `json:"hostname"`
 		} `json:"members"`
 	}
-
-	if err := json.Unmarshal(bodyBytes, &response); err != nil {
-		return 0, fmt.Errorf("failed to parse JSON: %w", err)
+	err = p.doRequestUnmarshalResponse(req, "getFreeLunId", &response)
+	if err != nil {
+		return 0, err
 	}
 
 	usedLUNs := make(map[int]bool)
@@ -308,23 +301,6 @@ func (p *Par3ClientWsImpl) GetLunID(lunName, initiatorGroupName string) (int, er
 	if err != nil {
 		return 0, fmt.Errorf("failed to create request: %w", err)
 	}
-	p.setReqHeadersWithSessionKey(req)
-
-	resp, err := p.HTTPClient.Do(req)
-	if err != nil {
-		return 0, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	resp, err = p.handleUnauthorizedSessionKey(resp, req, err)
-	if err != nil {
-		return 0, err
-	}
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return 0, fmt.Errorf("failed to read response: %w", err)
-	}
 
 	var response struct {
 		Members []struct {
@@ -334,10 +310,10 @@ func (p *Par3ClientWsImpl) GetLunID(lunName, initiatorGroupName string) (int, er
 		} `json:"members"`
 	}
 
-	if err := json.Unmarshal(bodyBytes, &response); err != nil {
-		return 0, fmt.Errorf("failed to parse JSON: %w", err)
+	err = p.doRequestUnmarshalResponse(req, "getLunId", &response)
+	if err != nil {
+		return 0, err
 	}
-
 	for _, vlun := range response.Members {
 		if vlun.VolumeName == lunName && vlun.Hostname == initiatorGroupName {
 			return vlun.LUN, nil
@@ -347,9 +323,102 @@ func (p *Par3ClientWsImpl) GetLunID(lunName, initiatorGroupName string) (int, er
 	return 0, fmt.Errorf("LUN ID not found for volume %s and host %s", lunName, initiatorGroupName)
 }
 
+func (p *Par3ClientWsImpl) GetLunSerialNumber(volumeName string) (string, error) {
+	url := fmt.Sprintf("%s/api/v1/volumes/%s", p.BaseURL, volumeName)
+
+	reqType := "get VLUNS"
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	type MyResponse struct {
+		Members []struct {
+			LUN          int    `json:"lun"`
+			VolumeName   string `json:"volumeName"`
+			Hostname     string `json:"hostname"`
+			VolumeWWN    string `json:"volumeWWN"`
+			Serial       string `json:"serial"`
+			Multipathing int    `json:"multipathing"`
+			Active       bool   `json:"active"`
+		} `json:"members"`
+	}
+
+	var response MyResponse
+
+	err = p.doRequestUnmarshalResponse(req, reqType, &response)
+	if err != nil {
+		return "", err
+	}
+
+	for _, vlun := range response.Members {
+		fmt.Println(">>>>>>")
+		fmt.Println(vlun.VolumeName, vlun.Serial)
+		if vlun.VolumeName == volumeName {
+			return vlun.Serial, nil
+		}
+	}
+
+	return "", fmt.Errorf("VLUN not found for volume: %s", volumeName)
+}
+
+func (p *Par3ClientWsImpl) doRequest(req *http.Request, reqDescription string) (*http.Response, error) {
+	_, err := p.GetSessionKey()
+	if err != nil {
+		return nil, err
+	}
+
+	p.setReqHeadersWithSessionKey(req)
+
+	resp, err := p.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed for %s: %w", reqDescription, err)
+	}
+
+	if resp, err = p.handleUnauthorizedSessionKey(resp, req, err); err != nil {
+		return nil, fmt.Errorf("failed for %s: %w", reqDescription, err)
+	}
+
+	return resp, nil
+}
+
+func (p *Par3ClientWsImpl) doRequestUnmarshalResponse(req *http.Request, reqDescription string, response interface{}) error {
+	_, err := p.GetSessionKey()
+	if err != nil {
+		return err
+	}
+
+	p.setReqHeadersWithSessionKey(req)
+
+	resp, err := p.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed for %s: %w", reqDescription, err)
+	}
+	defer resp.Body.Close()
+
+	if resp, err = p.handleUnauthorizedSessionKey(resp, req, err); err != nil {
+		return fmt.Errorf("failed for %s: %w", reqDescription, err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed for %s: status %d, body: %s", reqDescription, resp.StatusCode, string(body))
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response for %s: %w", reqDescription, err)
+	}
+
+	if err := json.Unmarshal(bodyBytes, response); err != nil {
+		return fmt.Errorf("failed to parse JSON for %s: %w", reqDescription, err)
+	}
+
+	return nil
+}
+
 func (p *Par3ClientWsImpl) handleUnauthorizedSessionKey(resp *http.Response, req *http.Request, err error) (*http.Response, error) {
 	if resp.StatusCode == http.StatusUnauthorized {
-		log.Println("Session expired (Code 6). Attempting to refresh session key...")
 		if _, err := p.GetSessionKey(); err != nil {
 			return nil, fmt.Errorf("failed to refresh session key: %w", err)
 		}
@@ -371,8 +440,7 @@ func (p *Par3ClientWsImpl) EnsureHostSetExists(hostSetName string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	p.setReqHeadersWithSessionKey(req)
-	resp, err := p.HTTPClient.Do(req)
+	resp, err := p.doRequest(req, "ensureHostSetExists, find set")
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
@@ -396,21 +464,14 @@ func (p *Par3ClientWsImpl) EnsureHostSetExists(hostSetName string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	p.setReqHeadersWithSessionKey(req)
-
-	resp, err = p.HTTPClient.Do(req)
+	respCreate, err := p.doRequest(req, "EnsuresHostSetExists")
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer respCreate.Body.Close()
 
-	resp, err = p.handleUnauthorizedSessionKey(resp, req, err)
-	if err != nil {
-		return err
-	}
-
-	if resp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(resp.Body)
+	if respCreate.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(respCreate.Body)
 		return fmt.Errorf("failed to create host set: status %d, body: %s", resp.StatusCode, string(body))
 	}
 
@@ -441,18 +502,8 @@ func (p *Par3ClientWsImpl) AddHostToHostSet(hostSetName string, hostName string)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	p.setReqHeadersWithSessionKey(req)
 
-	resp, err := p.HTTPClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	resp, err = p.handleUnauthorizedSessionKey(resp, req, err)
-	if err != nil {
-		return err
-	}
+	resp, err := p.doRequest(req, "AddHostToHostSet")
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

@@ -53,6 +53,10 @@ func (m *MockPar3Client) EnsureLunMapped(initiatorGroup string, targetLUN popula
 	return nil
 }
 
+func (m *MockPar3Client) GetLunSerialNumber(initiatorGroup string) (string, error) {
+	return "", nil
+}
+
 func (m *MockPar3Client) LunUnmap(ctx context.Context, initiatorGroupName, lunName string) error {
 	if lunID, exists := m.LUNMappings[initiatorGroupName][lunName]; exists {
 		delete(m.LUNMappings[initiatorGroupName], lunName)
