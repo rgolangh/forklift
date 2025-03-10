@@ -288,7 +288,7 @@ func (p *Par3ClientWsImpl) EnsureLunMapped(initiatorGroup string, targetLUN *pop
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("failed to map LUN: status %d, resp: %s", resp.StatusCode, resp)
+		return fmt.Errorf("failed to map LUN: status %d, resp: %v", resp.StatusCode, resp)
 	}
 
 	return nil
