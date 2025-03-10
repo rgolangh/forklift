@@ -18,7 +18,7 @@ type NetappClonner struct {
 }
 
 // Map the targetLUN to the initiator group.
-func (c *NetappClonner) Map(initatorGroup string, targetLUN populator.LUN) error {
+func (c *NetappClonner) Map(initatorGroup string, targetLUN *populator.LUN) error {
 	_, err := c.api.EnsureLunMapped(context.TODO(), initatorGroup, targetLUN.Name)
 	if err != nil {
 		return fmt.Errorf("Failed to map lun path %s to group %s: %w ", targetLUN.Name, initatorGroup, err)

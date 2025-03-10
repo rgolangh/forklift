@@ -204,7 +204,7 @@ test-copy-using-cli: build
 
 test-copy-using-cli-3par: build
 	bin/vsphere-xcopy-volume-populator \
-		--source-vmdk="[eco-iscsi-ds1] 3par/3par.vmdk" \
+		--source-vmdk="[eco-iscsi-ds1] boris01/boris01.vmdk" \
 	    --target-pvc=test1\
 		--target-namespace=default \
 		--storage-vendor=par3 \

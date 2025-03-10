@@ -20,7 +20,7 @@ func TestPar3Clonner(t *testing.T) {
 	initiatorGroup := "TestInitiatorGroup"
 
 	t.Run("Map LUN", func(t *testing.T) {
-		err := clonner.Map(initiatorGroup, targetLUN)
+		err := clonner.Map(initiatorGroup, &targetLUN)
 		assert.NoError(t, err, "Expected no error when mapping LUN")
 
 		lunID, err := mockClient.GetLunID(targetLUN.Name, initiatorGroup)
@@ -30,7 +30,7 @@ func TestPar3Clonner(t *testing.T) {
 	})
 
 	t.Run("Unmap LUN", func(t *testing.T) {
-		err := clonner.Map(initiatorGroup, targetLUN)
+		err := clonner.Map(initiatorGroup, &targetLUN)
 		assert.NoError(t, err, "Expected no error when mapping LUN")
 
 		err = clonner.UnMap(initiatorGroup, targetLUN)

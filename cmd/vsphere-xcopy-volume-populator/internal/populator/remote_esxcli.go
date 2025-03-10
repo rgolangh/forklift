@@ -39,24 +39,10 @@ func (p *RemoteEsxcliPopulator) Populate(sourceVMDKFile string, volumeHandle str
 	}
 
 	klog.Infof("Starting to populate using remote esxcli vmkfstools, source vmdk %s target LUN %s", sourceVMDKFile, volumeHandle)
-	lun, err := p.StorageApi.ResolveVolumeHandleToLUN(volumeHandle)
-	if err != nil {
-		return err
-	}
-
-	originalInitiatorGroups, err := p.StorageApi.CurrentMappedGroups(lun)
-	if err != nil {
-		return fmt.Errorf("failed to fetch the current initiator groups of the lun %s: %w", lun.Name, err)
-	}
-
-	targetLUN := fmt.Sprintf("/vmfs/devices/disks/naa.%s%x", lun.ProviderID, lun.SerialNumber)
-	klog.Infof("resolved lun serial number %s with IQN %s to lun %s", lun.SerialNumber, lun.IQN, targetLUN)
-
 	host, err := p.VSphereClient.GetEsxByVm(context.Background(), vmDisk.VMName)
 	if err != nil {
 		return err
 	}
-
 	// for iSCSI add the host to the group using IQN. Is there something else for FC?
 	r, err := p.VSphereClient.RunEsxCommand(context.Background(), host, []string{"iscsi", "adapter", "list"})
 	if err != nil {
@@ -78,7 +64,19 @@ func (p *RemoteEsxcliPopulator) Populate(sourceVMDKFile string, volumeHandle str
 		return fmt.Errorf("failed to add the ESX IQN %s to the initiator group %w", esxIQN, err)
 	}
 
-	err = p.StorageApi.Map(xcopyInitiatorGroup, lun)
+	lun, err := p.StorageApi.ResolveVolumeHandleToLUN(volumeHandle)
+	if err != nil {
+		return err
+	}
+
+	lun.IQN = esxIQN
+
+	originalInitiatorGroups, err := p.StorageApi.CurrentMappedGroups(lun)
+	if err != nil {
+		return fmt.Errorf("failed to fetch the current initiator groups of the lun %s: %w", lun.Name, err)
+	}
+
+	err = p.StorageApi.Map(xcopyInitiatorGroup, &lun)
 	if err != nil {
 		return fmt.Errorf("failed to map lun %s to initiator group %s: %w", lun, xcopyInitiatorGroup, err)
 	}
@@ -98,11 +96,21 @@ func (p *RemoteEsxcliPopulator) Populate(sourceVMDKFile string, volumeHandle str
 
 	}()
 
+	naa := ""
+	if lun.DeviceNAA == "" {
+		naa = fmt.Sprintf("naa.%s%x", lun.ProviderID, lun.SerialNumber)
+	} else {
+		naa = lun.DeviceNAA
+	}
+
+	targetLUN := fmt.Sprintf("/vmfs/devices/disks/%s", naa)
+	klog.Infof("resolved lun serial number %s with IQN %s to lun %s", lun.SerialNumber, lun.IQN, targetLUN)
+
 	_, err = p.VSphereClient.RunEsxCommand(context.Background(), host, []string{"storage", "core", "adapter", "rescan", "-a", "1"})
 	if err != nil {
 		return err
 	}
-	naa := fmt.Sprintf("naa.%s%x", lun.ProviderID, lun.SerialNumber)
+
 	_, err = p.VSphereClient.RunEsxCommand(context.Background(), host, []string{"storage", "core", "device", "list", "-d", naa})
 	if err != nil {
 		return fmt.Errorf("failed to locate the target LUN %s. Check the LUN details and the host mapping response: %s", naa, err)

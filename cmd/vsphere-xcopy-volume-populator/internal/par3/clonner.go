@@ -6,7 +6,7 @@ import (
 	"github.com/kubev2v/forklift/cmd/vsphere-xcopy-volume-populator/internal/populator"
 )
 
-// const XCOPY_CLONNER_GROUP = "xcopy-service-vms"
+const PROVIDER_ID = "60002ac"
 
 type Par3Clonner struct {
 	client Par3Client
@@ -21,7 +21,7 @@ func NewPar3Clonner(storageHostname, storageUsername, storagePassword string) (P
 
 // EnsureClonnerIgroup creates or update an initiator group with the clonnerIqn
 func (c *Par3Clonner) EnsureClonnerIgroup(initiatorGroup string, clonnerIqn string) error {
-	err := c.client.EnsureHostWithIqn(initiatorGroup, clonnerIqn)
+	hostName, err := c.client.EnsureHostWithIqn(clonnerIqn)
 	if err != nil {
 		return fmt.Errorf("failed to ensure host with IQN: %w", err)
 	}
@@ -31,7 +31,7 @@ func (c *Par3Clonner) EnsureClonnerIgroup(initiatorGroup string, clonnerIqn stri
 		return fmt.Errorf("failed to ensure host set: %w", err)
 	}
 
-	err = c.client.AddHostToHostSet(initiatorGroup, initiatorGroup)
+	err = c.client.AddHostToHostSet(initiatorGroup, hostName)
 	if err != nil {
 		return fmt.Errorf("failed to add host to host set: %w", err)
 	}
@@ -40,7 +40,7 @@ func (c *Par3Clonner) EnsureClonnerIgroup(initiatorGroup string, clonnerIqn stri
 }
 
 // Map is responsible to mapping an initiator group to a LUN
-func (c *Par3Clonner) Map(initiatorGroup string, targetLUN populator.LUN) error {
+func (c *Par3Clonner) Map(initiatorGroup string, targetLUN *populator.LUN) error {
 	return c.client.EnsureLunMapped(initiatorGroup, targetLUN)
 }
 
@@ -59,15 +59,10 @@ func (p *Par3Clonner) CurrentMappedGroups(targetLUN populator.LUN) ([]string, er
 }
 
 func (c *Par3Clonner) ResolveVolumeHandleToLUN(volumeHandle string) (populator.LUN, error) {
-	name, serial, err := c.client.GetLunDetailsByVolumeName(volumeHandle)
+	lun := populator.LUN{VolumeHandle: volumeHandle, ProviderID: PROVIDER_ID}
+	err := c.client.GetLunDetailsByVolumeName(volumeHandle, &lun)
 	if err != nil {
 		return populator.LUN{}, err
 	}
-
-	// in RHEL lsblk needs that swap. In fedora it doesn't
-	//serialNumber :=  strings.ReplaceAll(l.SerialNumber, "?", "\\\\x3f")
-	lun := populator.LUN{Name: name, VolumeHandle: volumeHandle, SerialNumber: serial, ProviderID: "60002ac"}
 	return lun, nil
-
-	//return populator.LUN{}, fmt.Errorf("Par3Clonner ResolveVolumeHandle not implemented yet")
 }

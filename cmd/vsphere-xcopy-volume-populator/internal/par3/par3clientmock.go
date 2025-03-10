@@ -26,8 +26,8 @@ func NewMockPar3Client() *MockPar3Client {
 		HostSets:    make(map[string][]string),
 	}
 }
-func (m *MockPar3Client) GetLunDetailsByVolumeName(volumeName string) (name string, serialNumber string, err error) {
-	return "", "", nil
+func (m *MockPar3Client) GetLunDetailsByVolumeName(volumeName string, lun *populator.LUN) error {
+	return nil
 }
 
 func (m *MockPar3Client) CurrentMappedGroups(volumeName string) ([]string, error) {
@@ -40,7 +40,7 @@ func (m *MockPar3Client) GetSessionKey() (string, error) {
 	return m.SessionKey, nil
 }
 
-func (m *MockPar3Client) EnsureLunMapped(initiatorGroup string, targetLUN populator.LUN) error {
+func (m *MockPar3Client) EnsureLunMapped(initiatorGroup string, targetLUN *populator.LUN) error {
 	lunID, err := m.GetFreeLunID(initiatorGroup)
 	if err != nil {
 		return err
@@ -76,12 +76,8 @@ func (m *MockPar3Client) LunUnmap(ctx context.Context, initiatorGroupName, lunNa
 	return fmt.Errorf("mock: LUN %s not found for initiator group %s", lunName, initiatorGroupName)
 }
 
-func (m *MockPar3Client) EnsureHostWithIqn(initiatorGroupName string, iqn string) error {
-	if exists, _ := m.hostExists(initiatorGroupName); exists {
-		return nil
-	}
-
-	return m.createHost(initiatorGroupName, iqn)
+func (m *MockPar3Client) EnsureHostWithIqn(iqn string) (string, error) {
+	return "hostname", m.createHost("hostname", iqn)
 }
 func (m *MockPar3Client) EnsureHostSetExists(hostSetName string) error {
 	if _, exists := m.HostSets[hostSetName]; exists {
