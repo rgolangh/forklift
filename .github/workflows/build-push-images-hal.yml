@@ -8,6 +8,9 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
 
     steps:
       - name: Checkout Repository
@@ -20,7 +23,7 @@ jobs:
 
       - name: Log in to GitHub Container Registry (GHCR)
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u $GITHUB_ACTOR --password-stdin
+          echo "${{ secrets.GHCR_TOKEN }}" | podman login ghcr.io -u $GITHUB_ACTOR --password-stdin
 
       - name: Build Container Image
         run: |
