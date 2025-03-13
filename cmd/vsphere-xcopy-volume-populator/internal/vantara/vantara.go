@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/joho/godotenv"
 	// "github.com/kubev2v/forklift/cmd/vsphere-xcopy-volume-populator/internal/populator"
 )
 
@@ -51,6 +53,7 @@ func NewVantaraClonner(hostname, username, password string) (V, error) {
 }
 
 func GetStorageEnvVars() (map[string]interface{}, error) {
+	_ = godotenv.Load()
 	envWWNs := os.Getenv("ESX_WWN_LIST")
 	WWNs := []string{}
 	if envWWNs != "" {
@@ -87,8 +90,6 @@ func GetStorageEnvVars() (map[string]interface{}, error) {
 		"storageId: ", storageEnvVars["storageId"],
 		"restServerIP: ", storageEnvVars["restServerIP"],
 		"port: ", storageEnvVars["port"],
-		"userID: ", storageEnvVars["userID"],
-		"password: ", storageEnvVars["password"],
 	)
 	return storageEnvVars, nil
 }
