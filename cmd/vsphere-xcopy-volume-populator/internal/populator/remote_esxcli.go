@@ -55,6 +55,7 @@ func (p *RemoteEsxcliPopulator) Populate(sourceVMDKFile string, volumeHandle str
 	//targetLUN := fmt.Sprintf("/vmfs/devices/disks/naa.%s%s", lun.ProviderID, lun.SerialNumber)
 	//klog.Infof("resolved lun serial number %s with IQN %s to lun %s", lun.SerialNumber, lun.IQN, targetLUN)
 
+	klog.Infof("Resolved lun %s to IQN %s", lun.Name, lun.IQN)
 	host, err := p.VSphereClient.GetEsxByVm(context.Background(), vmDisk.VMName)
 	if err != nil {
 		return err
