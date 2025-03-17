@@ -4,12 +4,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"net/http"
+
+	//"net/http"
 	"os"
 	"path"
 	"strings"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+	//"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/client-go/util/cert"
 
 	"github.com/kubev2v/forklift/cmd/vsphere-xcopy-volume-populator/internal/ontap"
@@ -280,13 +281,13 @@ func setupTracing() (*prometheus.CounterVec, error) {
 		return nil, fmt.Errorf("Error writing key file: %w", err)
 	}
 
-	go func() {
-		http.Handle("/metrics", promhttp.Handler())
-		klog.Info("Staring metrics server")
-		if err := http.ListenAndServeTLS(":8443", certFile, keyFile, nil); err != nil {
-			klog.Fatal("Error starting prometheus endpoint: ", err)
-		}
-	}()
+	//	go func() {
+	//		http.Handle("/metrics", promhttp.Handler())
+	//		klog.Info("Staring metrics server")
+	//		if err := http.ListenAndServeTLS(":8443", certFile, keyFile, nil); err != nil {
+	//			klog.Fatal("Error starting prometheus endpoint: ", err)
+	//		}
+	//	}()
 
 	progressCounter := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
