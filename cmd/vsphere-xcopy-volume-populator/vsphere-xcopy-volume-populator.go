@@ -65,6 +65,8 @@ func main() {
 	handleArgs()
 
 	var storageApi populator.StorageApi
+	fmt.Println("storageVendor: ", storageVendor)
+	storageVendor = "vantara"
 	switch storageVendor {
 	case "ontap":
 		sm, err := ontap.NewNetappClonner(storageHostname, storageUsername, storagePassword)
@@ -187,7 +189,7 @@ func handleArgs() {
 	flag.StringVar(&ownerUID, "owner-uid", "", "Owner UID, passed by the populator - Usually PVC ID")
 	flag.StringVar(&sourceVMDKFile, "source-vmdk", "", "File name to populate")
 	flag.StringVar(&targetPVC, "target-pvc", "", "Target PVC for population")
-	flag.StringVar(&storageVendor, "storage-vendor", "ontap", "The storage vendor to work with. Current values: [ontap,]")
+	flag.StringVar(&storageVendor, "storage-vendor", "vantara", "The storage vendor to work with. Current values: [ontap,]")
 	flag.StringVar(&secretName, "secret-name", "", "The secret holding the credentials for vSphere API and the storage vendor API")
 	flag.StringVar(&targetNamespace, "target-namespace", "", "Contents to populate file with")
 	flag.StringVar(&storageHostname, "storage-hostname", os.Getenv("STORAGE_HOSTNAME"), "The storage vendor api hostname")
