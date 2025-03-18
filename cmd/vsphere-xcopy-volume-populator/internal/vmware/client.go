@@ -71,23 +71,28 @@ func (c *VSphereClient) RunEsxCommand(ctx context.Context, host *object.HostSyst
 }
 
 func (c *VSphereClient) GetEsxByVm(ctx context.Context, vmName string) (*object.HostSystem, error) {
+	klog.Infof("Getting ESX host for VM %s", vmName)
 	finder := find.NewFinder(c.Client.Client, true)
 
 	// Get the default datacenter
+	klog.Infof("Finding default datacenter")
 	dc, err := finder.DefaultDatacenter(ctx)
 	if err != nil {
 		klog.Errorf("Failed to find default datacenter: %s", err)
 		return nil, err
 	}
+	klog.Infof("Found default datacenter %s", dc)
 	finder.SetDatacenter(dc)
 
 	// Find the virtual machine by name
+	klog.Infof("Finding VM %s", vmName)
 	vm, err := finder.VirtualMachine(ctx, vmName)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to find VM %s: %v", vmName, err)
 	}
 
 	// Retrieve VM properties to get its host
+	klog.Infof("Getting VM properties")
 	var vmProps mo.VirtualMachine
 	err = vm.Properties(ctx, vm.Reference(), []string{"runtime.host"}, &vmProps)
 	if err != nil {
@@ -96,6 +101,7 @@ func (c *VSphereClient) GetEsxByVm(ctx context.Context, vmName string) (*object.
 
 	hostRef := vmProps.Runtime.Host
 	// Find host system
+	klog.Infof("Finding host system")
 	host := object.NewHostSystem(c.Client.Client, *hostRef) // Adjust host query as needed
 	if host == nil {
 		klog.Error("Failed to find host:", err)

@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 
+	"k8s.io/klog/v2"
+
 	"github.com/joho/godotenv"
 	// "github.com/kubev2v/forklift/cmd/vsphere-xcopy-volume-populator/internal/populator"
 )
@@ -86,7 +88,7 @@ func GetStorageEnvVars() (map[string]interface{}, error) {
 		"HostGroupID":  HGs,
 		"LdevID":       os.Getenv("LDEV_ID"),
 	}
-	fmt.Println(
+	klog.Infof(
 		"storageId: ", storageEnvVars["storageId"],
 		"restServerIP: ", storageEnvVars["restServerIP"],
 		"port: ", storageEnvVars["port"],
