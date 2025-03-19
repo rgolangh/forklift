@@ -8,13 +8,15 @@ type StorageApi interface {
 
 type StorageMapper interface {
 	// EnsureClonnerIgroup creates or updates an initiator group with the clonnerIqn
-	EnsureClonnerIgroup(initiatorGroup string, clonnerIqn string) error
+	EnsureClonnerIgroup(initiatorGroup []string, clonnerIqn []string) ([]string, error)
 	// Map is responsible to mapping an initiator group to a LUN
-	Map(initatorGroup string, targetLUN LUN) error
+	Map(initatorGroup []string, targetLUN LUN) error
 	// UnMap is responsible to unmapping an initiator group from a LUN
-	UnMap(initatorGroup string, targetLUN LUN) error
+	UnMap(initatorGroup []string, targetLUN LUN) error
 	// CurrentMappedGroups returns the initiator groups the LUN is mapped to
 	CurrentMappedGroups(targetLUN LUN) ([]string, error)
+	// GetNaaID returns the LUN with the NAA ID
+	GetNaaID(lun LUN) LUN
 }
 
 type StorageResolver interface {

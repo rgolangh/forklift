@@ -17,7 +17,7 @@ type VantaraStorageAPI struct {
 	RestSvrPort  string
 	UserID       string
 	Password     string
-	VanataObj    VantaraObject
+	VantaraObj   VantaraObject
 }
 
 type VantaraObject map[string]interface {
@@ -30,7 +30,7 @@ func NewVantaraStorageAPI(storageID, restServerIP, restSvrPort, userID, password
 		RestSvrPort:  restSvrPort,
 		UserID:       userID,
 		Password:     password,
-		VanataObj:    vantaraObj,
+		VantaraObj:   vantaraObj,
 	}
 }
 
@@ -149,7 +149,7 @@ func (v *VantaraStorageAPI) VantaraStorage(actionType string) (map[string]interf
 
 	switch actionType {
 	case GETLDEV:
-		url = api.Ldev(v.VanataObj["ldevId"].(string))
+		url = api.Ldev(v.VantaraObj["ldevId"].(string))
 		r, err = MakeHTTPRequest("GET", url, nil, headers, "session", headers["Authorization"])
 		if err != nil {
 			fmt.Println("Failed to get LDEV info")
@@ -158,8 +158,8 @@ func (v *VantaraStorageAPI) VantaraStorage(actionType string) (map[string]interf
 	case ADDPATH:
 		var hostGroupId string
 		url = api.Luns()
-		body["ldevId"] = v.VanataObj["ldevId"].(string)
-		for _, hostGroupId = range v.VanataObj["hostGroupIds"].([]string) {
+		body["ldevId"] = v.VantaraObj["ldevId"].(string)
+		for _, hostGroupId = range v.VantaraObj["hostGroupIds"].([]string) {
 			parts := strings.SplitN(hostGroupId, ",", 2)
 			body["portId"] = parts[0]
 			body["hostGroupNumber"] = parts[1]
@@ -174,7 +174,7 @@ func (v *VantaraStorageAPI) VantaraStorage(actionType string) (map[string]interf
 	case DELETEPATH:
 		var hostGroupId string
 		var ldevEntry LdevEntry
-		url = api.Ldev(v.VanataObj["ldevId"].(string))
+		url = api.Ldev(v.VantaraObj["ldevId"].(string))
 		r, err = MakeHTTPRequest("GET", url, nil, headers, "session", headers["Authorization"])
 		if err != nil {
 			fmt.Println("Failed to get LDEV info")
@@ -183,7 +183,7 @@ func (v *VantaraStorageAPI) VantaraStorage(actionType string) (map[string]interf
 		ldevEntryBytes, _ := json.Marshal(r)
 		json.Unmarshal(ldevEntryBytes, &ldevEntry)
 		fmt.Println(ldevEntry)
-		for _, hostGroupId = range v.VanataObj["hostGroupIds"].([]string) {
+		for _, hostGroupId = range v.VantaraObj["hostGroupIds"].([]string) {
 			lunId, err := getlunID(ldevEntry, hostGroupId)
 			if err != nil {
 				fmt.Println("Failed to get LUN ID")

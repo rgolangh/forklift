@@ -9,7 +9,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/joho/godotenv"
-	// "github.com/kubev2v/forklift/cmd/vsphere-xcopy-volume-populator/internal/populator"
+	"github.com/kubev2v/forklift/cmd/vsphere-xcopy-volume-populator/internal/populator"
 )
 
 const decode = true
@@ -22,39 +22,22 @@ const (
 	GETPORTDETAILS = "getPortDetails"
 )
 
-type LUN struct {
-	//Name is the volume name or just name in the storage system
-	Name string
-	// SerialNumber is a representation of the disk. With combination of the
-	// vendor ID it should ve globally unique and can be identified by udev, usually
-	// under /dev/disk/by-id/ with some prefix or postfix, depending on the udev rule
-	// and can also be found by lsblk -o name,serial
-	SerialNumber string
-	// target's IQN
-	IQN string
-	// Storage provider ID in hex
-	ProviderID string
-	// the volume handle as set by the CSI driver field spec.volumeHandle
-	VolumeHandle string
-	//  Logical device ID of the volume
-	LDeviceID string
-	// Storage device Serial Number
-	StorageSerialNumber string
-	// Storage Protocol
-	Protocol string
+type VantaraCloner struct {
+	api VantaraStorageAPI
 }
 
-type V struct {
-	Hostname string
-	Username string
-	Password string
+func NewVantaraClonner(hostname, username, password string) (VantaraCloner, error) {
+	vantaraObj := make(VantaraObject)
+	envStorage, _ := getStorageEnvVars()
+	vantaraObj["xcopyInitiatorGroup"] = envStorage["HostWWN"]
+	vantaraObj["hostGroupIds"] = envStorage["HostGroupID"]
+	vantaraObj["ldevId"] = envStorage["LdevID"]
+	v := getNewVantaraStorageAPIfromEnv(envStorage, vantaraObj)
+
+	return VantaraCloner{api: *v}, nil
 }
 
-func NewVantaraClonner(hostname, username, password string) (V, error) {
-	return V{}, nil
-}
-
-func GetStorageEnvVars() (map[string]interface{}, error) {
+func getStorageEnvVars() (map[string]interface{}, error) {
 	_ = godotenv.Load()
 	envWWNs := os.Getenv("ESX_WWN_LIST")
 	WWNs := []string{}
@@ -105,14 +88,13 @@ func getNewVantaraStorageAPIfromEnv(envVars map[string]interface{}, vantaraObj V
 	return NewVantaraStorageAPI(envVars["storageId"].(string), envVars["restServerIP"].(string), envVars["port"].(string), envVars["userID"].(string), envVars["password"].(string), vantaraObj)
 }
 
-func CurrentMappedGroups(targetLUN LUN) ([]string, error) {
-	envStorage, _ := GetStorageEnvVars()
-	return envStorage["HostGroupID"].([]string), nil
+func (v *VantaraCloner) CurrentMappedGroups(targetLUN populator.LUN) ([]string, error) {
+	return v.api.VantaraObj["hostGroupIds"].([]string), nil
 }
 
-func ResolveVolumeHandleToLUN(volumeHandle string) (LUN, error) {
+func (v *VantaraCloner) ResolveVolumeHandleToLUN(volumeHandle string) (populator.LUN, error) {
 	parts := strings.Split(volumeHandle, "--")
-	lun := LUN{}
+	lun := populator.LUN{}
 	if len(parts) != 5 || parts[0] != "01" {
 		return lun, fmt.Errorf("invalid volume handle: %s", volumeHandle)
 	}
@@ -135,22 +117,18 @@ func ResolveVolumeHandleToLUN(volumeHandle string) (LUN, error) {
 	return lun, nil
 }
 
-func GetNaaID(lun LUN) LUN {
-	LDEV := ShowLdev(lun)
+func (v *VantaraCloner) GetNaaID(lun populator.LUN) populator.LUN {
+	LDEV := v.ShowLdev(lun)
 	ldevnaaid := LDEV["naaId"].(string)
 	lun.ProviderID = ldevnaaid[:6]
 	lun.SerialNumber = ldevnaaid[6:]
 	return lun
 }
 
-func EnsureClonnerIgroup(xcopyInitiatorGroup []string, esxIQN []string) ([]string, error) {
+func (v *VantaraCloner) EnsureClonnerIgroup(xcopyInitiatorGroup []string, esxIQN []string) ([]string, error) {
 	var r map[string]interface{}
-	vantaraObj := make(VantaraObject)
-	vantaraObj["initiatorGroup"] = xcopyInitiatorGroup
-	envStorage, _ := GetStorageEnvVars()
 
-	v := getNewVantaraStorageAPIfromEnv(envStorage, vantaraObj)
-	r, _ = v.VantaraStorage(GETPORTDETAILS)
+	r, _ = v.api.VantaraStorage(GETPORTDETAILS)
 
 	jsonBytes, err := json.Marshal(r)
 	if err != nil {
@@ -163,7 +141,7 @@ func EnsureClonnerIgroup(xcopyInitiatorGroup []string, esxIQN []string) ([]strin
 		fmt.Println("Error parsing JSON:", err)
 		return nil, err
 	}
-	ret := FindHostGroupIDs(jsonData, envStorage["HostWWN"].([]string))
+	ret := FindHostGroupIDs(jsonData, v.api.VantaraObj["xcopyInitiatorGroup"].([]string))
 
 	jsonBytes, _ = json.MarshalIndent(ret, "", "  ")
 	fmt.Println(string(jsonBytes))
@@ -176,34 +154,17 @@ func EnsureClonnerIgroup(xcopyInitiatorGroup []string, esxIQN []string) ([]strin
 	return hostGroupIds, nil
 }
 
-func Map(xcopyInitiatorGroup []string, lun LUN) error {
-	vantaraObj := make(VantaraObject)
-	vantaraObj["ldevId"] = lun.LDeviceID
-	vantaraObj["hostGroupIds"] = xcopyInitiatorGroup
-	envStorage, _ := GetStorageEnvVars()
-
-	v := getNewVantaraStorageAPIfromEnv(envStorage, vantaraObj)
-	_, _ = v.VantaraStorage(ADDPATH)
+func (v *VantaraCloner) Map(xcopyInitiatorGroup []string, lun populator.LUN) error {
+	_, _ = v.api.VantaraStorage(ADDPATH)
 	return nil
 }
 
-func UnMap(xcopyInitiatorGroup []string, lun LUN) error {
-	vantaraObj := make(VantaraObject)
-	vantaraObj["ldevId"] = lun.LDeviceID
-	vantaraObj["hostGroupIds"] = xcopyInitiatorGroup
-	envStorage, _ := GetStorageEnvVars()
-
-	v := getNewVantaraStorageAPIfromEnv(envStorage, vantaraObj)
-	_, _ = v.VantaraStorage(DELETEPATH)
+func (v *VantaraCloner) UnMap(xcopyInitiatorGroup []string, lun populator.LUN) error {
+	_, _ = v.api.VantaraStorage(DELETEPATH)
 	return nil
 }
 
-func ShowLdev(lun LUN) map[string]interface{} {
-	vantaraObj := make(VantaraObject)
-	vantaraObj["ldevId"] = lun.LDeviceID
-	envStorage, _ := GetStorageEnvVars()
-
-	v := getNewVantaraStorageAPIfromEnv(envStorage, vantaraObj)
-	r, _ := v.VantaraStorage(GETLDEV)
+func (v *VantaraCloner) ShowLdev(lun populator.LUN) map[string]interface{} {
+	r, _ := v.api.VantaraStorage(GETLDEV)
 	return r
 }

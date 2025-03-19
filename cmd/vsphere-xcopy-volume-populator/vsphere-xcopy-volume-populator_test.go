@@ -20,7 +20,7 @@ func TestPopulator(t *testing.T) {
 	var storageClient = storage_mocks.NewMockStorageApi(mockCtrl)
 	var underTest = populator.RemoteEsxcliPopulator{
 		VSphereClient: vmwareClient,
-		StorageApi:    storageClient,
+		//		StorageApi:    storageClient,
 	}
 
 	var tests = []struct {

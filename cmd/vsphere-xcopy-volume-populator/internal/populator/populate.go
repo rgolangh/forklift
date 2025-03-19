@@ -28,6 +28,12 @@ type LUN struct {
 	ProviderID string
 	// the volume handle as set by the CSI driver field spec.volumeHandle
 	VolumeHandle string
+	//  Logical device ID of the volume
+	LDeviceID string
+	// Storage device Serial Number
+	StorageSerialNumber string
+	// Storage Protocol
+	Protocol string
 }
 
 // VMDisk is the target VMDisk in vmware

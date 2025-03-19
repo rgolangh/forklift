@@ -13,7 +13,6 @@ import (
 	//"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/client-go/util/cert"
 
-	"github.com/kubev2v/forklift/cmd/vsphere-xcopy-volume-populator/internal/ontap"
 	"github.com/kubev2v/forklift/cmd/vsphere-xcopy-volume-populator/internal/populator"
 	"github.com/kubev2v/forklift/cmd/vsphere-xcopy-volume-populator/internal/vantara"
 
@@ -69,18 +68,19 @@ func main() {
 	fmt.Println("storageVendor: ", storageVendor)
 	storageVendor = "vantara"
 	switch storageVendor {
-	case "ontap":
-		sm, err := ontap.NewNetappClonner(storageHostname, storageUsername, storagePassword)
-		if err != nil {
-			klog.Fatalf("failed to initialize ontap storage mapper with %s", err)
-		}
-		storageApi = &sm
 	case "vantara":
-		_, err := vantara.NewVantaraClonner(storageHostname, storageUsername, storagePassword)
+		sm, err := vantara.NewVantaraClonner(storageHostname, storageUsername, storagePassword)
 		if err != nil {
 			klog.Fatalf("failed to initialize vantara storage mapper with %s", err)
 		}
-		storageApi = nil
+		storageApi = &sm
+
+	case "ontap":
+		//		sm, err := ontap.NewNetappClonner(storageHostname, storageUsername, storagePassword)
+		//		if err != nil {
+		//			klog.Fatalf("failed to initialize ontap storage mapper with %s", err)
+		//		}
+		//		storageApi = &sm
 
 	default:
 		klog.Fatalf("Unsupported storage vendor %s use one of [ontap,]", storageVendor)
