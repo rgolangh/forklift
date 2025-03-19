@@ -132,25 +132,25 @@ func (v *VantaraCloner) EnsureClonnerIgroup(xcopyInitiatorGroup []string, esxIQN
 
 	jsonBytes, err := json.Marshal(r)
 	if err != nil {
-		fmt.Println("Error marshalling map to JSON:", err)
+		klog.Errorf("Error marshalling map to JSON: %s", err)
 		return nil, err
 	}
 
 	var jsonData JSONData
 	if err := json.Unmarshal(jsonBytes, &jsonData); err != nil {
-		fmt.Println("Error parsing JSON:", err)
+		klog.Errorf("Error parsing JSON: %s", err)
 		return nil, err
 	}
 	ret := FindHostGroupIDs(jsonData, v.api.VantaraObj["xcopyInitiatorGroup"].([]string))
 
 	jsonBytes, _ = json.MarshalIndent(ret, "", "  ")
-	fmt.Println(string(jsonBytes))
+	klog.Infof("HostGroupIDs: %s", string(jsonBytes))
 
 	var hostGroupIds = make([]string, len(ret))
 	for i, login := range ret {
 		hostGroupIds[i] = login.HostGroupId
 	}
-	fmt.Println(hostGroupIds)
+	klog.Infof("HostGroupIDs: %s", hostGroupIds)
 	return hostGroupIds, nil
 }
 
