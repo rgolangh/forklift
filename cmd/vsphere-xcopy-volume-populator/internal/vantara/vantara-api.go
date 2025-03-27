@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"k8s.io/klog/v2"
 )
 
 type storageDeviceIDPrefix string
@@ -108,11 +110,11 @@ func (api *BlockStorageAPI) APIVersion() string {
 }
 
 func MakeHTTPRequest(methodType, url string, body, headers map[string]string, authType, authValue string) (map[string]interface{}, error) {
-	fmt.Println("Making HTTP request:")
-	fmt.Println("Method:", methodType)
-	fmt.Println("URL:", url)
-	fmt.Println("Headers:", headers)
-	fmt.Println("Auth Type:", authType)
+	klog.Infof("Making HTTP request:")
+	klog.Infof("Method: %s", methodType)
+	klog.Infof("URL: %s", url)
+	klog.Infof("Headers: %v", headers)
+	klog.Infof("Auth Type: %s", authType)
 
 	// Disable TLS certificate verification
 	client := &http.Client{
@@ -126,7 +128,7 @@ func MakeHTTPRequest(methodType, url string, body, headers map[string]string, au
 	if body != nil { // If body is not nil, encode it as JSON
 		jsonBody, err := json.Marshal(body)
 		if err != nil {
-			fmt.Println("Error encoding JSON:", err)
+			klog.Errorf("Error encoding JSON: %v", err)
 			return nil, err
 		}
 		reqBody = bytes.NewReader(jsonBody)
@@ -134,7 +136,7 @@ func MakeHTTPRequest(methodType, url string, body, headers map[string]string, au
 
 	req, err := http.NewRequest(methodType, url, reqBody)
 	if err != nil {
-		fmt.Println("Error creating request:", err)
+		klog.Errorf("Error creating request: %v", err)
 		return nil, err
 	}
 
@@ -155,14 +157,14 @@ func MakeHTTPRequest(methodType, url string, body, headers map[string]string, au
 
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Println("Error making request:", err)
+		klog.Errorf("Error making request: %v", err)
 		return nil, err
 	}
-	fmt.Println("Response status:", resp.Status)
+	klog.Infof("Response status: %s", resp.Status)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
-		fmt.Println("Request failed with status code:", resp.StatusCode)
+		klog.Errorf("Request failed with status code: %d", resp.StatusCode)
 		return nil, fmt.Errorf("request failed with status code: %d", resp.StatusCode)
 	}
 
@@ -206,7 +208,7 @@ func (api *BlockStorageAPI) InvokeAsyncCommand(methodType, url string, body, hea
 	if err != nil {
 		return "", err
 	}
-	fmt.Println("Request was accepted. JOB URL:", result["self"])
+	klog.Infof("Request was accepted. JOB URL: %v", result["self"])
 
 	status := "Initializing"
 	retryCount := 1
@@ -214,18 +216,17 @@ func (api *BlockStorageAPI) InvokeAsyncCommand(methodType, url string, body, hea
 
 	for status != "Completed" {
 		if retryCount > 10 { // MAX_RETRY_COUNT
-			fmt.Println("Timeout error: operation was not completed")
 			return "", fmt.Errorf("timeout error: operation was not completed")
 		}
 		time.Sleep(time.Duration(waitTime) * time.Second)
 
 		jobResult, err := api.checkUpdate(fmt.Sprintf("%d", int(result["jobId"].(float64))), headers)
 		if err != nil {
-			fmt.Println("Error checking job status:", err)
+			klog.Errorf("Error checking job status: %v", err)
 			return "", err
 		}
 		status = jobResult["status"].(string)
-		fmt.Println("Status:", status)
+		klog.Infof("Status: %s", status)
 		if waitTime*2 < 120 {
 			waitTime *= 2
 		} else {
@@ -234,6 +235,6 @@ func (api *BlockStorageAPI) InvokeAsyncCommand(methodType, url string, body, hea
 		retryCount++
 	}
 
-	fmt.Println("Async job was succeeded. status:", status)
+	klog.Infof("Async job was succeeded. status: %s", status)
 	return status, nil
 }

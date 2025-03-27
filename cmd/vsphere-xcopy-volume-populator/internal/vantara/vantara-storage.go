@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"k8s.io/klog/v2"
 )
 
 const requiredMajorVersion = 1
@@ -102,20 +104,20 @@ func (v *VantaraStorageAPI) VantaraStorage(actionType string) (map[string]interf
 	}
 
 	if err != nil {
-		fmt.Println(err)
+		klog.Errorf("Failed to extract IP address: %v", err)
 		return nil, err
 	}
 
 	api := NewBlockStorageAPI(decodedIp, v.RestSvrPort, v.StorageID)
 
-	println(api)
+	klog.Infof("API object", api)
 
 	// Check API version
 	url := api.APIVersion()
-	println(url)
+	klog.Infof("API version URL: %s", url)
 	r, err := MakeHTTPRequest("GET", url, nil, headers, "basic", userCreds)
 	if err != nil {
-		fmt.Println("Failed to get API version")
+		klog.Errorf("Failed to get API version: %v", err)
 		return nil, err
 	}
 	apiVersion := r["apiVersion"].(string)
@@ -125,19 +127,19 @@ func (v *VantaraStorageAPI) VantaraStorage(actionType string) (map[string]interf
 	url = api.GenerateSession()
 	r, err = MakeHTTPRequest("POST", url, body, headers, "basic", userCreds)
 	if err != nil {
-		fmt.Println("Failed to generate session")
+		klog.Errorf("Failed to generate session: %v", err)
 		return nil, err
 	}
-	fmt.Println("Session generated successfully:", r)
+	klog.Infof("Session generated successfully: %v", r)
 	// Discard session after the function returns
 	defer func() {
 		url = api.DiscardSession(sessionId)
 		resp, err := MakeHTTPRequest("DELETE", url, body, headers, "session", headers["Authorization"])
 		if err != nil {
-			fmt.Println("Failed to discard session:", err)
+			klog.Errorf("Failed to discard session: %v", err)
 			return
 		}
-		fmt.Println("Session discarded successfully:", resp)
+		klog.Infof("Session discarded successfully: %v", resp)
 	}()
 
 	token := r["token"].(string)
@@ -152,7 +154,7 @@ func (v *VantaraStorageAPI) VantaraStorage(actionType string) (map[string]interf
 		url = api.Ldev(v.VantaraObj["ldevId"].(string))
 		r, err = MakeHTTPRequest("GET", url, nil, headers, "session", headers["Authorization"])
 		if err != nil {
-			fmt.Println("Failed to get LDEV info")
+			klog.Errorf("Failed to get LDEV info: %v", err)
 			return nil, err
 		}
 	case ADDPATH:
@@ -164,7 +166,7 @@ func (v *VantaraStorageAPI) VantaraStorage(actionType string) (map[string]interf
 			body["portId"] = parts[0]
 			body["hostGroupNumber"] = parts[1]
 			bodyJson, _ := json.Marshal(body)
-			fmt.Println(string(bodyJson))
+			klog.Infof("Body: %s", string(bodyJson))
 			_, err := api.InvokeAsyncCommand("POST", url, body, headers)
 			if err != nil {
 				fmt.Println("Failed to add path")
@@ -177,23 +179,23 @@ func (v *VantaraStorageAPI) VantaraStorage(actionType string) (map[string]interf
 		url = api.Ldev(v.VantaraObj["ldevId"].(string))
 		r, err = MakeHTTPRequest("GET", url, nil, headers, "session", headers["Authorization"])
 		if err != nil {
-			fmt.Println("Failed to get LDEV info")
+			klog.Errorf("Failed to get LDEV info: %v", err)
 			return nil, err
 		}
 		ldevEntryBytes, _ := json.Marshal(r)
 		json.Unmarshal(ldevEntryBytes, &ldevEntry)
-		fmt.Println(ldevEntry)
+		klog.Infof("LDEV entry: %v", ldevEntry)
 		for _, hostGroupId = range v.VantaraObj["hostGroupIds"].([]string) {
 			lunId, err := getlunID(ldevEntry, hostGroupId)
 			if err != nil {
-				fmt.Println("Failed to get LUN ID")
+				klog.Errorf("Failed to get LUN ID: %v", err)
 				return nil, err
 			}
 			objectID := hostGroupId + "," + lunId
 			url = api.Lun(objectID)
 			_, err = api.InvokeAsyncCommand("DELETE", url, body, headers)
 			if err != nil {
-				fmt.Println("Failed to delete path")
+				klog.Errorf("Failed to delete path: %v", err)
 				return nil, err
 			}
 		}
@@ -201,14 +203,14 @@ func (v *VantaraStorageAPI) VantaraStorage(actionType string) (map[string]interf
 		url = api.Ports() + "?detailInfoType=" + "logins"
 		r, err = MakeHTTPRequest("GET", url, nil, headers, "session", headers["Authorization"])
 		if err != nil {
-			fmt.Println("Failed to get port details")
+			klog.Errorf("Failed to get port details: %v", err)
 			return nil, err
 		}
 	default:
 	}
 
 	jsonData, _ := json.MarshalIndent(r, "", "  ")
-	fmt.Println(string(jsonData))
+	klog.Infof("Response: %s", string(jsonData))
 	return r, nil
 
 }
