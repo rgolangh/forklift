@@ -88,8 +88,28 @@ func getNewVantaraStorageAPIfromEnv(envVars map[string]interface{}, vantaraObj V
 	return NewVantaraStorageAPI(envVars["storageId"].(string), envVars["restServerIP"].(string), envVars["port"].(string), envVars["userID"].(string), envVars["password"].(string), vantaraObj)
 }
 
-func (v *VantaraCloner) CurrentMappedGroups(targetLUN populator.LUN) ([]string, error) {
-	return v.api.VantaraObj["hostGroupIds"].([]string), nil
+func (v *VantaraCloner) CurrentMappedGroups(lun populator.LUN) ([]string, error) {
+	LDEV := v.ShowLdev(lun)
+
+	// Ensure LDEV["ports"] is of type []map[string]interface{}
+	ports, ok := LDEV["ports"].([]map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid type for LDEV['ports'], expected []map[string]interface{}")
+	}
+
+	hgids := []string{}
+	for _, port := range ports {
+		portID, ok := port["portId"].(string)
+		if !ok {
+			return nil, fmt.Errorf("invalid type for port['portId'], expected string")
+		}
+		hostGroupNumber, ok := port["hostGroupNumber"].(string)
+		if !ok {
+			return nil, fmt.Errorf("invalid type for port['hostGroupNumber'], expected string")
+		}
+		hgids = append(hgids, portID+","+hostGroupNumber)
+	}
+	return hgids, nil
 }
 
 func (v *VantaraCloner) ResolveVolumeHandleToLUN(volumeHandle string) (populator.LUN, error) {
