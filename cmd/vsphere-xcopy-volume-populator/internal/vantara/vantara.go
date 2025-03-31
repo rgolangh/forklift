@@ -31,7 +31,6 @@ func NewVantaraClonner(hostname, username, password string) (VantaraCloner, erro
 	envStorage, _ := getStorageEnvVars()
 	vantaraObj["xcopyInitiatorGroup"] = envStorage["HostWWN"]
 	vantaraObj["hostGroupIds"] = envStorage["HostGroupID"]
-	vantaraObj["ldevId"] = envStorage["LdevID"]
 	v := getNewVantaraStorageAPIfromEnv(envStorage, vantaraObj)
 
 	return VantaraCloner{api: *v}, nil
@@ -144,6 +143,7 @@ func (v *VantaraCloner) ResolveVolumeHandleToLUN(volumeHandle string) (populator
 	//	lun.SerialNumber = ldevnaaid[6:]
 	lun.VolumeHandle = volumeHandle
 	lun.Name = ldevNickName
+	klog.Infof("Resolved LUN: %+v", lun)
 	return lun, nil
 }
 
@@ -185,16 +185,21 @@ func (v *VantaraCloner) EnsureClonnerIgroup(xcopyInitiatorGroup []string, esxIQN
 }
 
 func (v *VantaraCloner) Map(xcopyInitiatorGroup []string, lun populator.LUN) error {
+	v.api.VantaraObj["ldevId"] = lun.LDeviceID
+	v.api.VantaraObj["hostGroupIds"] = xcopyInitiatorGroup
 	_, _ = v.api.VantaraStorage(ADDPATH)
 	return nil
 }
 
 func (v *VantaraCloner) UnMap(xcopyInitiatorGroup []string, lun populator.LUN) error {
+	v.api.VantaraObj["ldevId"] = lun.LDeviceID
+	v.api.VantaraObj["hostGroupIds"] = xcopyInitiatorGroup
 	_, _ = v.api.VantaraStorage(DELETEPATH)
 	return nil
 }
 
 func (v *VantaraCloner) ShowLdev(lun populator.LUN) map[string]interface{} {
+	v.api.VantaraObj["ldevId"] = lun.LDeviceID
 	r, _ := v.api.VantaraStorage(GETLDEV)
 	return r
 }
