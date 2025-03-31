@@ -140,6 +140,7 @@ func (v *VantaraStorageAPI) VantaraStorage(actionType string) (map[string]interf
 			return
 		}
 		klog.Infof("Session discarded successfully: %v", resp)
+		klog.Flush()
 	}()
 
 	token := r["token"].(string)

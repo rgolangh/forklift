@@ -90,6 +90,7 @@ func getNewVantaraStorageAPIfromEnv(envVars map[string]interface{}, vantaraObj V
 
 func (v *VantaraCloner) CurrentMappedGroups(lun populator.LUN) ([]string, error) {
 	LDEV := v.ShowLdev(lun)
+	klog.Infof("LDEV: %s", LDEV)
 
 	// Ensure LDEV["ports"] is of type []map[string]interface{}
 	ports, ok := LDEV["ports"].([]map[string]interface{})
