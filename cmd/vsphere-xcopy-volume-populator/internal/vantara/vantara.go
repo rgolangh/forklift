@@ -108,6 +108,7 @@ func (v *VantaraCloner) CurrentMappedGroups(lun populator.LUN) ([]string, error)
 			return nil, fmt.Errorf("invalid type for port['hostGroupNumber'], expected string")
 		}
 		hgids = append(hgids, portID+","+hostGroupNumber)
+		klog.Infof("portID: %s, hostGroupNumber: %s", portID, hostGroupNumber)
 	}
 	return hgids, nil
 }
