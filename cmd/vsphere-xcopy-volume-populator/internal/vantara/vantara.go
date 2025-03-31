@@ -90,24 +90,32 @@ func getNewVantaraStorageAPIfromEnv(envVars map[string]interface{}, vantaraObj V
 
 func (v *VantaraCloner) CurrentMappedGroups(lun populator.LUN) ([]string, error) {
 	LDEV := v.ShowLdev(lun)
-	klog.Infof("LDEV: %s", LDEV)
+	klog.Infof("LDEV: %+v", LDEV) // LDEV is a map[string]interface{}
 
-	// Ensure LDEV["ports"] is of type []map[string]interface{}
-	ports, ok := LDEV["ports"].([]map[string]interface{})
+	// Ensure LDEV["ports"] is of type []interface{}
+	rawPorts, ok := LDEV["ports"].([]interface{})
 	if !ok {
-		return nil, fmt.Errorf("invalid type for LDEV['ports'], expected []map[string]interface{}")
+		return nil, fmt.Errorf("invalid type for LDEV['ports'], expected []interface{}")
 	}
 
 	hgids := []string{}
-	for _, port := range ports {
-		portID, ok := port["portId"].(string)
+	for _, rawPort := range rawPorts {
+		portMap, ok := rawPort.(map[string]interface{})
 		if !ok {
-			return nil, fmt.Errorf("invalid type for port['portId'], expected string")
+			return nil, fmt.Errorf("invalid type for port, expected map[string]interface{}")
 		}
-		hostGroupNumber, ok := port["hostGroupNumber"].(string)
-		if !ok {
-			return nil, fmt.Errorf("invalid type for port['hostGroupNumber'], expected string")
+
+		portID, _ := portMap["portId"].(string)
+
+		var hostGroupNumber string
+		if hgn, ok := portMap["hostGroupNumber"].(float64); ok {
+			hostGroupNumber = fmt.Sprintf("%d", int(hgn))
+		} else if hgnStr, ok := portMap["hostGroupNumber"].(string); ok {
+			hostGroupNumber = hgnStr
+		} else {
+			return nil, fmt.Errorf("invalid type for port['hostGroupNumber']")
 		}
+
 		hgids = append(hgids, portID+","+hostGroupNumber)
 		klog.Infof("portID: %s, hostGroupNumber: %s", portID, hostGroupNumber)
 	}
