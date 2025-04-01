@@ -469,27 +469,11 @@ $(ENVTEST): $(LOCALBIN)
 integration-test: generate fmt vet manifests
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -i --bin-dir $(LOCALBIN) -p path)" go test ./pkg/controller/migration/... -coverprofile cover.out
 
-# TODO rgolan remove
-rgolan:
-	BLOCK_OVERHEAD="0" \
-	FILESYSTEM_OVERHEAD="10" \
-	MAX_VM_INFLIGHT="2" \
-	CLEANUP_RETRIES="10" \
-	SNAPSHOT_STATUS_CHECK_RATE_SECONDS="10" \
-	SNAPSHOT_REMOVAL_TIMEOUT_MINUTES="120" \
-	VDDK_JOB_ACTIVE_DEADLINE="300" \
-	PRECOPY_INTERVAL="2" \
-	OPENSHIFT="true" \
-	METRICS_PORT="8081" API_PORT="443" \
-	VIRT_V2V_IMAGE="registry.redhat.io/migration-toolkit-virtualization/mtv-virt-v2v-rhel9@sha256:7937d0969df43f0ca76053642d62f04dbdeedb2ee821f853f2deadb5ceb8eedc" \
-	KUBEVIRT_CLIENT_GO_SCHEME_REGISTRATION_VERSION="v1" \
-	API_HOST="forklift-inventory-openshift-mtv.apps.ocp-edge-cluster-0.qe.lab.redhat.com" \
+build-controller:
+	go build -o bin/forklift-controller cmd/forklift-controller/main.go
+
+dev-controller: generate fmt vet build-controller
 	ROLE="main" \
-	FEATURE_VSPHERE_INCREMENTAL_BACKUP="true" \
-	VSPHERE_OS_MAP="forklift-virt-customize" \
-	OVIRT_OS_MAP="forklift-ovirt-osmap" \
-	VIRT_CUSTOMIZE_MAP="forklift-virt-customize" \
-	VSPHERE_COLD_CDI="true" \
-	SSL_CERT_FILE="/home/rgolan/src/kubev2v/forklift/tls-ca-bundle.pem" \
+	API_HOST="forklift-inventory-openshift-mtv.apps.ocp-edge-cluster-0.qe.lab.redhat.com" \
 	./bin/forklift-controller
 	#dlv --listen=:5432 --headless=true --api-version=2 exec ./bin/forklift-controller \

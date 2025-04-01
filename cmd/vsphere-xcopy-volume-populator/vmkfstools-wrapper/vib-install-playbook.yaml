@@ -1,5 +1,5 @@
 ---
-- hosts: all
+- hosts: poweredon
   gather_facts: false
   user: root
   vars:

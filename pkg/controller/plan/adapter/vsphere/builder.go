@@ -1103,16 +1103,18 @@ func (r *Builder) PopulatorVolumes(vmRef ref.Ref, annotations map[string]string,
 					err = vErr
 					return
 				}
-                klog.Infof("####################### mapped Datastore ID %s NAME %s disk.datastore %s ds %v", ds.ID, ds.Name, disk.Datastore, ds ) 
-				r.Log.Info("getting storage mapping by storage class %q and datastore %v datastore name %s datastore else %s", storageClass, disk.Datastore, disk.Datastore)
-				vsphereInstance, storageVendorProduct, mappingSecret := copyOffloadMapping.GetStorageMappingBy(storageClass, ds.Name)
+				r.Log.Info(fmt.Sprintf("getting storage mapping by storage class %q and datastore %v datastore name %s datastore", storageClass, disk.Datastore, disk.Datastore))
+				vsphereInstance, storageVendorProduct, storageVendorSecretRef := copyOffloadMapping.GetStorageMappingBy(storageClass, ds.Name)
 				if coldLocal && vsphereInstance != "" {
 					namespace := r.Plan.Spec.TargetNamespace
-					commonName := fmt.Sprintf("%s-%s-%s", r.Plan.Name, vm.Name, uuid.New())
+					// pvs names needs to be less than 63, this leaves 53 chars
+					// for the plan and vm name (2 dashes and 8 chars uuid)
+					commonName := fmt.Sprintf("%s-%s-%s", r.Plan.Name, vm.Name, uuid.New().String()[:8])
 					labels := map[string]string{
 						"migration": string(r.Migration.UID),
-						"vmdkPath":  "SANITIZED" + vmdkPathReplaces.Replace(r.baseVolume(disk.File)),
-						"vmID":      vmRef.ID,
+						// we need uniqness and a value which is less than 64 chars, hence using disk.key
+						"vmdkKey": fmt.Sprint(disk.Key),
+						"vmID":    vmRef.ID,
 					}
 					r.Log.Info("target namespace for migration", "namespace", namespace)
 					pvc := core.PersistentVolumeClaim{
@@ -1158,8 +1160,14 @@ func (r *Builder) PopulatorVolumes(vmRef ref.Ref, annotations map[string]string,
 							VmdkPath:             disk.File,
 							TargetPVC:            commonName,
 							StorageVendorProduct: storageVendorProduct,
-							SecretRef:            mappingSecret,
+							SecretRef:            secretName,
 						},
+					}
+
+					// Ensure a Secret combining Vsphere and Storage secrets
+					err = r.mergeSecrets(secretName, namespace, storageVendorSecretRef, r.Source.Provider.Namespace)
+					if err != nil {
+						return nil, fmt.Errorf("failed to merge secrets for popoulators", err)
 					}
 					// TODO should we handle if already exists due to re-entry? if the former
 					// reconcile was successful in creating the pvc but failed after that, e.g when
@@ -1190,13 +1198,12 @@ func (r *Builder) PrePopulateActions(c planbase.Client, vmRef ref.Ref) (ready bo
 }
 
 func (r *Builder) PopulatorTransferredBytes(pvc *core.PersistentVolumeClaim) (transferredBytes int64, err error) {
-	vmdkPath := pvc.Labels["vmdkPath"]
-	populatorCr, err := r.getVolumePopulator(vmdkPath)
+	vmdkKey := pvc.Labels["vmdkKey"]
+	populatorCr, err := r.getVolumePopulator(vmdkKey)
 	if err != nil {
 		return
 	}
 
-	r.Log.Info("RGOLAN - progress from populator pvcName and progress precentage from populator cr", pvc.Name, populatorCr)
 	progressPercentage, err := strconv.ParseInt(populatorCr.Status.Progress, 10, 64)
 	if err != nil {
 		r.Log.Error(err, "Couldn't parse the progress percentage.", "pvcName", pvc.Name, "progressPercentage", progressPercentage)
@@ -1211,13 +1218,13 @@ func (r *Builder) PopulatorTransferredBytes(pvc *core.PersistentVolumeClaim) (tr
 	return
 }
 
-func (r *Builder) getVolumePopulator(vmdkPath string) (api.VSphereXcopyVolumePopulator, error) {
+func (r *Builder) getVolumePopulator(vmdkKey string) (api.VSphereXcopyVolumePopulator, error) {
 	list := api.VSphereXcopyVolumePopulatorList{}
 	err := r.Destination.Client.List(context.TODO(), &list, &client.ListOptions{
 		Namespace: r.Plan.Spec.TargetNamespace,
 		LabelSelector: labels.SelectorFromSet(map[string]string{
 			"migration": string(r.Migration.UID),
-			"vmdkPath":  vmdkPath,
+			"vmdkKey":   vmdkKey,
 		}),
 	})
 	if err != nil {
@@ -1226,14 +1233,14 @@ func (r *Builder) getVolumePopulator(vmdkPath string) (api.VSphereXcopyVolumePop
 	if len(list.Items) == 0 {
 		return api.VSphereXcopyVolumePopulator{},
 			k8serr.NewNotFound(
-				api.SchemeGroupVersion.WithResource("VSphereXcopyVolumePopulator").GroupResource(), vmdkPath)
+				api.SchemeGroupVersion.WithResource("VSphereXcopyVolumePopulator").GroupResource(), vmdkKey)
 	}
 	if len(list.Items) > 1 {
 		return api.VSphereXcopyVolumePopulator{},
 			liberr.New(
 				"Multiple VSphereXcopyVolumePopulator CRs found for the same VMDK disk (with special chars replaced with _)",
-				"vmdkPath",
-				vmdkPath)
+				"vmdkKey",
+				vmdkKey)
 	}
 	return list.Items[0], nil
 }
@@ -1343,8 +1350,9 @@ func (r *Builder) getNetworkNameTemplate(vm *model.VM) string {
 
 type CopyOffloadMapping struct {
 	StorageClasses map[string]struct {
-		StorageVendorProduct string              `yaml:"storageVendorProduct"`
-		VsphereInstance      map[string][]string `yaml:",inline"`
+		StorageVendorProduct   string              `yaml:"storageVendorProduct"`
+		StorageVendorSecretRef string              `yaml:"storageVendorSecretRef"`
+		VsphereInstance        map[string][]string `yaml:",inline"`
 	} `yaml:",inline"`
 }
 
@@ -1355,13 +1363,13 @@ type CopyOffloadMapping struct {
 // If a mapping cannot match the plan storage mapping(hence returns empty),
 // then there will be no copy offload storage copying, and it falls back to
 // regular copy using DataVolumes
-func (m *CopyOffloadMapping) GetStorageMappingBy(storageClass string, dataStore string) (vsphereInstance string, storageVendor string, mappingSecret string) {
+func (m *CopyOffloadMapping) GetStorageMappingBy(storageClass string, dataStore string) (vsphereInstance string, storageVendor string, storageVendorSecret string) {
 	mapping, exists := m.StorageClasses[storageClass]
 	if exists {
 		for vsphereInstanceName, dataStores := range mapping.VsphereInstance {
 			klog.Infof("matching vsphere instance %s d datastore %s on datastores %v", vsphereInstanceName, dataStore, dataStores)
 			if slices.Contains(dataStores, dataStore) {
-				return vsphereInstanceName, mapping.StorageVendorProduct, fmt.Sprintf("%s-%s", vsphereInstanceName, mapping.StorageVendorProduct)
+				return vsphereInstanceName, mapping.StorageVendorProduct, mapping.StorageVendorSecretRef
 			}
 		}
 	}
@@ -1369,12 +1377,11 @@ func (m *CopyOffloadMapping) GetStorageMappingBy(storageClass string, dataStore 
 }
 
 func (r *Builder) GetCopyOffloadMapping() (CopyOffloadMapping, error) {
+	klog.Infof("Getting copy offload map name %s namespace %s", CopyOffloadConfigMap, r.Source.Provider.Namespace)
 	mapping := CopyOffloadMapping{}
 	cm := &core.ConfigMap{}
 	err := r.Get(context.TODO(), client.ObjectKey{
-		// TODO openshift-mtv or forklift controlledr ns
-		// RGOLAN fix it to take the namespace from the controller ns
-		Namespace: "openshift-mtv",
+		Namespace: r.Source.Provider.Namespace,
 		Name:      CopyOffloadConfigMap,
 	},
 		cm)
@@ -1391,7 +1398,60 @@ func (r *Builder) GetCopyOffloadMapping() (CopyOffloadMapping, error) {
 		}
 	}
 
-	// TODO - rgolan remove or change to V2
-	klog.Infof("RGOLAN marshal succeded %+v", mapping)
+	klog.V(2).Infof("copy offload mapping marshal succeded %+v", mapping)
 	return mapping, nil
+}
+
+// MergeSecrets merges the data from secret2 into secret1.
+func (r *Builder) mergeSecrets(migrationSecret, migrationSecretNS, storageVendorSecret, storageVendorSecretNS string) error {
+	dst := &core.Secret{}
+	if err := r.Get(context.Background(), client.ObjectKey{
+		Name:      migrationSecret,
+		Namespace: migrationSecretNS}, dst); err != nil {
+		return fmt.Errorf("failed to get migration secret: %w", err)
+	}
+
+	src := &core.Secret{}
+	if err := r.Get(context.Background(), client.ObjectKey{
+		Name:      storageVendorSecret,
+		Namespace: storageVendorSecretNS},
+		src); err != nil {
+		return fmt.Errorf("failed to get storage secret: %w", err)
+	}
+
+	// Merge the data from storage secret into migration secret
+	if dst.Data == nil {
+		dst.Data = make(map[string][]byte)
+	}
+	for key, value := range src.Data {
+		if _, exists := dst.Data[key]; exists {
+			r.Log.Info(fmt.Sprintf("secret key %s is going to be overriden in secret %s", key, dst.Name))
+		}
+		dst.Data[key] = value
+	}
+
+	// copy the keys into the keys the populator needs
+	for key, value := range dst.Data {
+		switch key {
+		case "url":
+			h, err := liburl.Parse(string(value))
+			if err != nil {
+				// ignore and try to use as is
+				dst.Data["GOVMOMI_HOSTNAME"] = value
+			}
+			dst.Data["GOVMOMI_HOSTNAME"] = []byte(h.Hostname())
+		case "user":
+			dst.Data["GOVMOMI_USERNAME"] = value
+		case "password":
+			dst.Data["GOVMOMI_PASSWORD"] = value
+		case "insecureSkipVerify":
+			dst.Data["GOVMOMI_INSECURE"] = value
+		}
+	}
+	// Update secret1 with the merged data.
+	if err := r.Update(context.Background(), dst); err != nil {
+		return fmt.Errorf("failed to update secret1: %w", err)
+	}
+
+	return nil
 }

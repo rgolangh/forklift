@@ -8,7 +8,6 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"github.com/joho/godotenv"
 	"github.com/kubev2v/forklift/cmd/vsphere-xcopy-volume-populator/internal/populator"
 )
 
@@ -37,7 +36,6 @@ func NewVantaraClonner(hostname, username, password string) (VantaraCloner, erro
 }
 
 func getStorageEnvVars() (map[string]interface{}, error) {
-	_ = godotenv.Load()
 	envWWNs := os.Getenv("ESX_WWN_LIST")
 	WWNs := []string{}
 	if envWWNs != "" {

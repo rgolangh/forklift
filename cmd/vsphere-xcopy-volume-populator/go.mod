@@ -3,10 +3,11 @@ module github.com/kubev2v/forklift/cmd/vsphere-xcopy-volume-populator
 go 1.23.0
 
 require (
+	github.com/golang/mock v1.1.1
 	github.com/netapp/trident v0.0.0-20241205202115-c2d23723d93e
 	github.com/stretchr/testify v1.10.0
 	github.com/vmware/govmomi v0.48.0
-	go.uber.org/mock v0.4.0
+	go.uber.org/mock v0.5.0
 	k8s.io/apimachinery v0.31.3
 	k8s.io/klog/v2 v2.130.1
 )
@@ -50,7 +51,6 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/imdario/mergo v0.3.13 // indirect
-	github.com/joho/godotenv v1.5.1
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kubernetes-csi/csi-proxy/client v1.1.3 // indirect

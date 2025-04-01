@@ -2799,7 +2799,7 @@ func (r *KubeVirt) loadHosts() (hosts map[string]*api.Host, err error) {
 
 // IsCopyOffload is determined by PVC having the copy-offload label, which is
 // set by the builder earlier in #PopulatorVolumes
-// TODO rgolan - for now the check will be done if any PVC match - this is obviously coarse
+// TODO rgolan - for now the check will be done if any PVC match in the migration - this is obviously coarse
 // and should be per a disk's storage class, for example a disk from NFS or local doesn't support that
 // (specifically referring to vmkfstools xcopy for RDM)
 func (r *KubeVirt) IsCopyOffload(pvcs []*core.PersistentVolumeClaim) bool {

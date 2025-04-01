@@ -45,7 +45,7 @@ spec:
                 type: string
               storageVendorProduct:
                 description: |-
-                  StorageVendor is the storage vendor the target disk and PVC are connected to
+                  StorageVendorProduct is the storage vendor the target disk and PVC are connected to
                   Supported values [ontap, ]
                 type: string
               targetPVC:
