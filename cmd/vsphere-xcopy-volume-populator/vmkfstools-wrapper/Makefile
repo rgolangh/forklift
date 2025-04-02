@@ -2,12 +2,6 @@ build:
 	./create-vib.sh
 
 copy:
-<<<<<<< HEAD
-	scp vmkfstools-wrapper.vib root@ocp-edge113.lab.eng.tlv2.redhat.com:/vmfs/volumes/eco-iscsi-ds2/
-
-install: build
-	ansible-playbook vib-install-playbook.yaml -i esxi_hosts.yaml
-=======
 	scp vmkfstools-wrapper.vib root@ecoesxi04.lab.eng.tlv2.redhat.com:/vmfs/volumes/eco-iscsi-ds2/
 
 install: build
@@ -23,4 +17,3 @@ inventory:
 	VMWARE_PASSWORD=$(shell ansible-vault view ~/vaults/vmware_vault.yaml --vault-password-file ~/vaults/passfile |yq .password) \
 	ansible-inventory --list -i esxi_hosts.yaml  -vvvv --become
 	
->>>>>>> vsphere-xcopy-volume-populator
