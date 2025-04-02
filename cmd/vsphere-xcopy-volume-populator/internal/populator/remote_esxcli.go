@@ -3,6 +3,7 @@ package populator
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/kubev2v/forklift/cmd/vsphere-xcopy-volume-populator/internal/vmware"
 	"k8s.io/klog/v2"
@@ -66,26 +67,43 @@ func (p *RemoteEsxcliPopulator) Populate(sourceVMDKFile string, volumeHandle str
 	klog.Infof("Working with ESXi %+v", host)
 
 	// for iSCSI add the host to the group using IQN. Is there something else for FC?
-	r, err := p.VSphereClient.RunEsxCommand(context.Background(), host, []string{"iscsi", "adapter", "list"})
+	r, err := p.VSphereClient.RunEsxCommand(context.Background(), host, []string{"storage", "core", "adapter", "list"})
 	if err != nil {
 		return err
 	}
-	esxIQN := ""
+	uniqueUIDs := make(map[string]bool)
+	hbaUIDs := []string{}
+
 	for _, a := range r {
-		// get the first adapter iqn
-		iqnValue, ok := a["UID"]
-		if !ok || len(iqnValue) == 0 {
-			return fmt.Errorf("failed to extract the IQN from the adapter item%s", a)
+		driver, hasDriver := a["Driver"]
+		linkState, hasLink := a["Link State"]
+		uid, hasUID := a["UID"]
+
+		if !hasDriver || !hasLink || !hasUID || len(driver) == 0 || len(linkState) == 0 || len(uid) == 0 {
+			continue
 		}
-		esxIQN = iqnValue[0]
-		klog.Infof("iSCSI adapter IQN %s", esxIQN)
+
+		drv := driver[0]
+		link := linkState[0]
+		id := uid[0]
+
+		// Check if the UID is FC, iSCSI or NVMe-oF
+		isTargetUID := strings.HasPrefix(id, "fc.") || strings.HasPrefix(id, "iqn.") || strings.HasPrefix(id, "nqn.")
+
+		if link == "link-up" && isTargetUID {
+			if _, exists := uniqueUIDs[id]; !exists {
+				uniqueUIDs[id] = true
+				hbaUIDs = append(hbaUIDs, id)
+				klog.Infof("Storage Adapter UID: %s (Driver: %s)", id, drv)
+			}
+		}
 	}
 
 	xcopyInitiatorGroup := []string{}
-	HostWwns := []string{}
-	m, err := p.StorageApi.EnsureClonnerIgroup(xcopyInitiatorGroup, HostWwns)
+
+	m, err := p.StorageApi.EnsureClonnerIgroup(xcopyInitiatorGroup, hbaUIDs)
 	if err != nil {
-		return fmt.Errorf("failed to add the ESX IQN %s to the initiator group %w", esxIQN, err)
+		return fmt.Errorf("failed to add the ESX IQN %s to the initiator group %w", hbaUIDs, err)
 	}
 
 	err = p.StorageApi.Map(xcopyInitiatorGroup, lun, m)
