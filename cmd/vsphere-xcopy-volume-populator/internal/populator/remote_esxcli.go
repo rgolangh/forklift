@@ -74,6 +74,7 @@ func (p *RemoteEsxcliPopulator) Populate(sourceVMDKFile string, volumeHandle str
 	uniqueUIDs := make(map[string]bool)
 	hbaUIDs := []string{}
 
+	// Print the adapter information for debugging
 	for i, val := range r {
 		klog.Infof("Adapter [%d]: %+v", i, val)
 		for key, field := range val {
@@ -83,7 +84,7 @@ func (p *RemoteEsxcliPopulator) Populate(sourceVMDKFile string, volumeHandle str
 
 	for _, a := range r {
 		driver, hasDriver := a["Driver"]
-		linkState, hasLink := a["Link State"]
+		linkState, hasLink := a["LinkState"]
 		uid, hasUID := a["UID"]
 
 		if !hasDriver || !hasLink || !hasUID || len(driver) == 0 || len(linkState) == 0 || len(uid) == 0 {
