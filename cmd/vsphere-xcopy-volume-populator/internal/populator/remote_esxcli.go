@@ -8,7 +8,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-// const xcopyInitiatorGroup = "xcopy-esxs"
+//const xcopyInitiatorGroup = "xcopy-esxs"
 
 type EsxCli interface {
 	ListVibs() ([]string, error)
@@ -32,7 +32,13 @@ func NewWithRemoteEsxcli(storageApi StorageApi, vsphereHostname, vsphereUsername
 
 }
 
-func (p *RemoteEsxcliPopulator) Populate(sourceVMDKFile string, volumeHandle string, progress chan int, quit chan string) error {
+func (p *RemoteEsxcliPopulator) Populate(sourceVMDKFile string, volumeHandle string, progress chan int, quit chan error) (err error) {
+	// isn't it better to not call close the channel from the caller?
+	defer func() {
+		if err != nil {
+			quit <- err
+		}
+	}()
 	vmDisk, err := ParseVmdkPath(sourceVMDKFile)
 	if err != nil {
 		return err
@@ -44,15 +50,15 @@ func (p *RemoteEsxcliPopulator) Populate(sourceVMDKFile string, volumeHandle str
 		return err
 	}
 
-	originalInitiatorGroups, err := p.StorageApi.CurrentMappedGroups(lun)
+	originalInitiatorGroups, err := p.StorageApi.CurrentMappedGroups(lun, nil)
 	if err != nil {
 		return fmt.Errorf("failed to fetch the current initiator groups of the lun %s: %w", lun.Name, err)
 	}
+	klog.Infof("Current initiator groups the LUN %s is mapped to %+v", lun.IQN, originalInitiatorGroups)
 
 	//targetLUN := fmt.Sprintf("/vmfs/devices/disks/naa.%s%s", lun.ProviderID, lun.SerialNumber)
 	//klog.Infof("resolved lun serial number %s with IQN %s to lun %s", lun.SerialNumber, lun.IQN, targetLUN)
 
-	klog.Infof("Resolved lun %s to IQN %s", lun.Name, lun.IQN)
 	host, err := p.VSphereClient.GetEsxByVm(context.Background(), vmDisk.VMName)
 	if err != nil {
 		return err
@@ -75,26 +81,26 @@ func (p *RemoteEsxcliPopulator) Populate(sourceVMDKFile string, volumeHandle str
 		klog.Infof("iSCSI adapter IQN %s", esxIQN)
 	}
 
-	hostWWNs := []string{}
-	xcopyInitiatorGroup, err := p.StorageApi.EnsureClonnerIgroup([]string{}, hostWWNs)
+	xcopyInitiatorGroup := []string{}
+	HostWwns := []string{}
+	m, err := p.StorageApi.EnsureClonnerIgroup(xcopyInitiatorGroup, HostWwns)
 	if err != nil {
 		return fmt.Errorf("failed to add the ESX IQN %s to the initiator group %w", esxIQN, err)
 	}
 
-	err = p.StorageApi.Map(xcopyInitiatorGroup, lun)
+	err = p.StorageApi.Map(xcopyInitiatorGroup, lun, m)
 	if err != nil {
 		return fmt.Errorf("failed to map lun %s to initiator group %s: %w", lun, xcopyInitiatorGroup, err)
 	}
 	defer func() {
 		fmt.Println("Unmapping before returning")
-		p.StorageApi.UnMap(xcopyInitiatorGroup, lun)
-		p.StorageApi.Map(originalInitiatorGroups, lun)
+		p.StorageApi.UnMap(xcopyInitiatorGroup, lun, m)
+		p.StorageApi.Map(originalInitiatorGroups, lun, m)
 		fmt.Println("Remapping original initiator groups")
 		//		for _, group := range originalInitiatorGroups {
 		//p.StorageApi.Map(group, lun)
 		//			vantara.Map(group, lun)
 		//		}
-
 	}()
 
 	lun = p.StorageApi.GetNaaID(lun)
@@ -129,7 +135,7 @@ func (p *RemoteEsxcliPopulator) Populate(sourceVMDKFile string, volumeHandle str
 		// TODO need to process the vmkfstools stderr(probably) and to write the
 		// progress to a file, and then continuously read and report on the channel
 		progress <- 100
-		quit <- response
+		quit <- nil
 	}()
 	return nil
 }

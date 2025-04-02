@@ -85,7 +85,7 @@ func getNewVantaraStorageAPIfromEnv(envVars map[string]interface{}, vantaraObj V
 	return NewVantaraStorageAPI(envVars["storageId"].(string), envVars["restServerIP"].(string), envVars["port"].(string), envVars["userID"].(string), envVars["password"].(string), vantaraObj)
 }
 
-func (v *VantaraCloner) CurrentMappedGroups(lun populator.LUN) ([]string, error) {
+func (v *VantaraCloner) CurrentMappedGroups(lun populator.LUN, context populator.MappingContext) ([]string, error) {
 	LDEV := v.ShowLdev(lun)
 	klog.Infof("LDEV: %+v", LDEV) // LDEV is a map[string]interface{}
 
@@ -153,7 +153,7 @@ func (v *VantaraCloner) GetNaaID(lun populator.LUN) populator.LUN {
 	return lun
 }
 
-func (v *VantaraCloner) EnsureClonnerIgroup(xcopyInitiatorGroup []string, esxIQN []string) ([]string, error) {
+func (v *VantaraCloner) EnsureClonnerIgroup(xcopyInitiatorGroup []string, esxIQN []string) (populator.MappingContext, error) {
 	var r map[string]interface{}
 
 	r, _ = v.api.VantaraStorage(GETPORTDETAILS)
@@ -179,19 +179,19 @@ func (v *VantaraCloner) EnsureClonnerIgroup(xcopyInitiatorGroup []string, esxIQN
 		hostGroupIds[i] = login.HostGroupId
 	}
 	klog.Infof("HostGroupIDs: %s", hostGroupIds)
-	return hostGroupIds, nil
+	return populator.MappingContext{"hostGroupIds": hostGroupIds}, nil
 }
 
-func (v *VantaraCloner) Map(xcopyInitiatorGroup []string, lun populator.LUN) error {
+func (v *VantaraCloner) Map(xcopyInitiatorGroup []string, lun populator.LUN, context populator.MappingContext) error {
 	v.api.VantaraObj["ldevId"] = lun.LDeviceID
-	v.api.VantaraObj["hostGroupIds"] = xcopyInitiatorGroup
+	v.api.VantaraObj["hostGroupIds"] = context["hostGroupIds"].([]string)
 	_, _ = v.api.VantaraStorage(ADDPATH)
 	return nil
 }
 
-func (v *VantaraCloner) UnMap(xcopyInitiatorGroup []string, lun populator.LUN) error {
+func (v *VantaraCloner) UnMap(xcopyInitiatorGroup []string, lun populator.LUN, context populator.MappingContext) error {
 	v.api.VantaraObj["ldevId"] = lun.LDeviceID
-	v.api.VantaraObj["hostGroupIds"] = xcopyInitiatorGroup
+	v.api.VantaraObj["hostGroupIds"] = context["hostGroupIds"].([]string)
 	_, _ = v.api.VantaraStorage(DELETEPATH)
 	return nil
 }

@@ -20,7 +20,7 @@ func TestPopulator(t *testing.T) {
 	var storageClient = storage_mocks.NewMockStorageApi(mockCtrl)
 	var underTest = populator.RemoteEsxcliPopulator{
 		VSphereClient: vmwareClient,
-		//		StorageApi:    storageClient,
+		StorageApi:    storageClient,
 	}
 
 	var tests = []struct {
@@ -52,7 +52,7 @@ func TestPopulator(t *testing.T) {
 			targetPVC:  "pvc-12345",
 			setup: func() {
 				storageClient.EXPECT().ResolveVolumeHandleToLUN("pvc-12345").Return(populator.LUN{SerialNumber: "abc"}, nil)
-				storageClient.EXPECT().CurrentMappedGroups(populator.LUN{SerialNumber: "abc"}).Return(nil, fmt.Errorf(""))
+				storageClient.EXPECT().CurrentMappedGroups(populator.LUN{SerialNumber: "abc"}, nil).Return(nil, fmt.Errorf(""))
 			},
 			want: fmt.Errorf("failed to fetch the current initiator groups of the lun : %w", fmt.Errorf("")),
 		},
@@ -62,7 +62,7 @@ func TestPopulator(t *testing.T) {
 			targetPVC:  "pvc-12345",
 			setup: func() {
 				storageClient.EXPECT().ResolveVolumeHandleToLUN("pvc-12345").Return(populator.LUN{SerialNumber: "abc"}, nil)
-				storageClient.EXPECT().CurrentMappedGroups(populator.LUN{SerialNumber: "abc"}).Return(nil, fmt.Errorf(""))
+				storageClient.EXPECT().CurrentMappedGroups(populator.LUN{SerialNumber: "abc"}, nil).Return(nil, fmt.Errorf(""))
 			},
 			want: fmt.Errorf("failed to fetch the current initiator groups of the lun : %w", fmt.Errorf("")),
 		},
@@ -73,7 +73,7 @@ func TestPopulator(t *testing.T) {
 			targetPVC:  "pvc-12345",
 			setup: func() {
 				storageClient.EXPECT().ResolveVolumeHandleToLUN("pvc-12345").Return(populator.LUN{SerialNumber: "abc"}, nil).Times(1)
-				storageClient.EXPECT().CurrentMappedGroups(populator.LUN{SerialNumber: "abc"})
+				storageClient.EXPECT().CurrentMappedGroups(populator.LUN{SerialNumber: "abc"}, nil)
 				vmwareClient.EXPECT().GetEsxByVm(gomock.Any(), "my-vm").Return(nil, fmt.Errorf("")).Times(1)
 			},
 			want: fmt.Errorf(""),
@@ -83,10 +83,10 @@ func TestPopulator(t *testing.T) {
 			name: "working source and target",
 			setup: func() {
 				storageClient.EXPECT().ResolveVolumeHandleToLUN("pvc-12345").Return(populator.LUN{SerialNumber: "abc"}, nil)
-				storageClient.EXPECT().CurrentMappedGroups(gomock.Any())
+				storageClient.EXPECT().CurrentMappedGroups(gomock.Any(), gomock.Any())
 				storageClient.EXPECT().EnsureClonnerIgroup(gomock.Any(), gomock.Any())
-				storageClient.EXPECT().Map("xcopy-esxs", gomock.Any())
-				storageClient.EXPECT().UnMap(gomock.Any(), gomock.Any())
+				storageClient.EXPECT().Map("xcopy-esxs", gomock.Any(), gomock.Any())
+				storageClient.EXPECT().UnMap(gomock.Any(), gomock.Any(), gomock.Any())
 				vmwareClient.EXPECT().GetEsxByVm(context.Background(), gomock.Any())
 				vmwareClient.EXPECT().RunEsxCommand(context.Background(), gomock.Any(),
 					[]string{"iscsi", "adapter", "list"})
@@ -104,7 +104,7 @@ func TestPopulator(t *testing.T) {
 	for _, tcase := range tests {
 		t.Run(tcase.name, func(t *testing.T) {
 			progressCh := make(chan int)
-			quitCh := make(chan string)
+			quitCh := make(chan error)
 			tcase.setup()
 			result := underTest.Populate(tcase.sourceVMDK, tcase.targetPVC, progressCh, quitCh)
 			assert.Equal(t, result, tcase.want)

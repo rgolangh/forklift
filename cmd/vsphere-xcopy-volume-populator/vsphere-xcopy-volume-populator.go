@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"net/http"
 	"os"
 	"path"
-	"strings"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/client-go/util/cert"
@@ -29,18 +29,14 @@ import (
 var version = "unknown"
 
 var (
-	//secretRef is needed because of lack of control on the populator pod
-	// deployment. When/if we gain control on the pod deployment we should mount
-	// the secret as env vars. There is an attempt to push that,
-	// see https://github.com/kubernetes-csi/lib-volume-populator/pull/171
 	crName          string
 	crNamespace     string
 	pvcSize         string
 	ownerUID        string
-	secretName      string
 	sourceVMDKFile  string
 	targetPVC       string
 	targetNamespace string
+	secretName      string
 	storageVendor   string
 	storageHostname string
 	storageUsername string
@@ -96,7 +92,7 @@ func main() {
 		klog.Fatalf("Failed to create a remote esxcli populator: %s", err)
 	}
 
-	volumeHandle, err := getVolumeHandle(clientSet, targetNamespace, targetNamespace, targetPVC)
+	volumeHandle, err := getVolumeHandle(clientSet, targetNamespace, targetPVC)
 	if err != nil {
 		klog.Fatalf("Failed to fetch the volume handle details from the target pvc %s: %s", targetPVC, err)
 	}
@@ -109,7 +105,7 @@ func main() {
 	// channel for progress report
 	progressCh := make(chan int)
 	// channel for quitting with output
-	quitCh := make(chan string)
+	quitCh := make(chan error)
 
 	go p.Populate(sourceVMDKFile, volumeHandle, progressCh, quitCh)
 
@@ -127,6 +123,9 @@ func main() {
 			}
 		case q := <-quitCh:
 			klog.Infof("channel quit %s", q)
+			if q != nil {
+				klog.Fatal(q)
+			}
 			return
 		}
 	}
@@ -148,7 +147,7 @@ func newKubeClient(masterURL string, kubeconfig string) (*kubernetes.Clientset, 
 // to locate the created volume on the PVC. There is a  chance where the volume details are listed on the
 // "prime-{ORIG_PVC_NAME}" PVC because when the controller pod is handling it, the pvc prime should be bounded
 // to popoulator pod. However it is not guarnteed to be bounded at that stage and it may take time
-func getVolumeHandle(kubeClient *kubernetes.Clientset, targetNamespace, namespace, targetPVC string) (string, error) {
+func getVolumeHandle(kubeClient *kubernetes.Clientset, targetNamespace, targetPVC string) (string, error) {
 	pvc, err := kubeClient.CoreV1().PersistentVolumeClaims(targetNamespace).Get(context.Background(), targetPVC, metav1.GetOptions{})
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch the the target persistent volume claim %q %w", pvc.Name, err)
@@ -160,7 +159,7 @@ func getVolumeHandle(kubeClient *kubernetes.Clientset, targetNamespace, namespac
 		primePVCName := "prime-" + pvc.GetUID()
 		klog.Infof("the volume name is not found on the claim %q. Trying the prime pvc %q", pvc.Name, primePVCName)
 		// try pvc with postfix "prime" that the populator copies. The prime volume is created in the namespace where the populator controller runs.
-		primePVC, err := kubeClient.CoreV1().PersistentVolumeClaims(namespace).Get(context.Background(), string(primePVCName), metav1.GetOptions{})
+		primePVC, err := kubeClient.CoreV1().PersistentVolumeClaims(targetNamespace).Get(context.Background(), string(primePVCName), metav1.GetOptions{})
 		if err != nil {
 			return "", fmt.Errorf("failed to fetch the the target persistent volume claim %q %w", primePVC.Name, err)
 		}
@@ -229,33 +228,14 @@ func handleArgs() {
 			}
 		case "storage-hostname", "storage-username", "storage-password",
 			"vsphere-hostname", "vsphere-username", "vsphere-password":
-			if secretName == "" && f.Value.String() == "" {
+			if f.Value.String() == "" {
 				missingFlags = true
-				klog.Errorf("secret-ref is not set, missing value for flag --%s", f.Name)
+				klog.Errorf("missing value for flag --%s", f.Name)
 			}
 		}
 	})
 	if missingFlags {
 		os.Exit(2)
-	}
-
-	klog.Infof("Current namespace %s ", targetNamespace)
-	if secretName != "" {
-		secret, err := clientSet.CoreV1().Secrets(targetNamespace).Get(context.Background(), secretName, metav1.GetOptions{})
-		if err != nil {
-			klog.Fatalf("fail to fetch the secret %s: %s", secretName, err)
-		}
-
-		flag.VisitAll(func(f *flag.Flag) {
-			if f.Value.String() != "" {
-				return
-			}
-			name := strings.ReplaceAll(strings.ToUpper(f.Name), "-", "_")
-			klog.V(2).Infof("Looking for key %q in the populator secret", name)
-			if v, exists := secret.Data[name]; exists {
-				f.Value.Set(string(v))
-			}
-		})
 	}
 }
 
@@ -282,8 +262,13 @@ func setupTracing() (*prometheus.CounterVec, error) {
 
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
+		// use minumum TLS 1.2
+		cfg := tls.Config{MinVersion: tls.VersionTLS12}
+		server := http.Server{
+			Addr:      ":8443",
+			TLSConfig: &cfg}
 		klog.Info("Staring metrics server")
-		if err := http.ListenAndServeTLS(":8443", certFile, keyFile, nil); err != nil {
+		if err := server.ListenAndServeTLS(certFile, keyFile); err != nil {
 			klog.Fatal("Error starting prometheus endpoint: ", err)
 		}
 	}()
