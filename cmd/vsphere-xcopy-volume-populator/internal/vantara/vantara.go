@@ -125,6 +125,21 @@ func (v *VantaraCloner) GetNaaID(lun populator.LUN) populator.LUN {
 }
 
 func (v *VantaraCloner) EnsureClonnerIgroup(xcopyInitiatorGroup []string, hbaUIDs []string) (populator.MappingContext, error) {
+	if envHGs, exist := os.LookupEnv("HOSTGROUP_ID_LIST"); exist {
+		hgids := make([]string, 0)
+		if envHGs != "" {
+			items := strings.Split(envHGs, ",")
+			for _, item := range items {
+				hg := strings.TrimSpace(item)
+				if hg != "" {
+					hgids = append(hgids, hg)
+				}
+			}
+		}
+		klog.Infof("HostGroupIDs from env: %s", hgids)
+		return populator.MappingContext{"hostGroupIds": hgids}, nil
+	}
+
 	var r map[string]interface{}
 
 	r, _ = v.api.VantaraStorage(GETPORTDETAILS)

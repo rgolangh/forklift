@@ -163,6 +163,13 @@ func MakeHTTPRequest(methodType, url string, body, headers map[string]string, au
 	klog.Infof("Response status: %s", resp.Status)
 	defer resp.Body.Close()
 
+	// Todo: Check for 503 status code and retry
+	if resp.StatusCode == http.StatusServiceUnavailable {
+		klog.Errorf("Service unavailable, retrying...")
+		time.Sleep(60 * time.Second)
+		return MakeHTTPRequest(methodType, url, body, headers, authType, authValue)
+	}
+
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
 		klog.Errorf("Request failed with status code: %d", resp.StatusCode)
 		return nil, fmt.Errorf("request failed with status code: %d", resp.StatusCode)
