@@ -28,45 +28,19 @@ type VantaraCloner struct {
 func NewVantaraClonner(hostname, username, password string) (VantaraCloner, error) {
 	vantaraObj := make(VantaraObject)
 	envStorage, _ := getStorageEnvVars()
-	vantaraObj["xcopyInitiatorGroup"] = envStorage["HostWWN"]
-	vantaraObj["hostGroupIds"] = envStorage["HostGroupID"]
 	v := getNewVantaraStorageAPIfromEnv(envStorage, vantaraObj)
 
 	return VantaraCloner{api: *v}, nil
 }
 
 func getStorageEnvVars() (map[string]interface{}, error) {
-	envWWNs := os.Getenv("ESX_WWN_LIST")
-	WWNs := []string{}
-	if envWWNs != "" {
-		items := strings.Split(envWWNs, ",")
-		for _, item := range items {
-			wwn := strings.TrimSpace(item)
-			if wwn != "" {
-				WWNs = append(WWNs, wwn)
-			}
-		}
-	}
-	envHGs := os.Getenv("HOSTGROUP_ID_LIST")
-	HGs := []string{}
-	if envHGs != "" {
-		items := strings.Split(envHGs, ",")
-		for _, item := range items {
-			hg := strings.TrimSpace(item)
-			if hg != "" {
-				HGs = append(HGs, hg)
-			}
-		}
-	}
+
 	storageEnvVars := map[string]interface{}{
 		"storageId":    os.Getenv("STORAGE_ID"),
 		"restServerIP": os.Getenv("STORAGE_URL"),
 		"port":         os.Getenv("STORAGE_PORT"),
 		"userID":       os.Getenv("STORAGE_USERNAME"),
 		"password":     os.Getenv("STORAGE_PASSWORD"),
-		"HostWWN":      WWNs,
-		"HostGroupID":  HGs,
-		"LdevID":       os.Getenv("LDEV_ID"),
 	}
 	klog.Infof(
 		"storageId: ", storageEnvVars["storageId"],
@@ -74,9 +48,6 @@ func getStorageEnvVars() (map[string]interface{}, error) {
 		"port: ", storageEnvVars["port"],
 		"userID: ", "",
 		"password: ", "",
-		"HostWWN: ", storageEnvVars["HostWWN"],
-		"HostGroupID: ", storageEnvVars["HostGroupID"],
-		"LdevID: ", storageEnvVars["LdevID"],
 	)
 	return storageEnvVars, nil
 }
@@ -153,7 +124,7 @@ func (v *VantaraCloner) GetNaaID(lun populator.LUN) populator.LUN {
 	return lun
 }
 
-func (v *VantaraCloner) EnsureClonnerIgroup(xcopyInitiatorGroup []string, esxIQN []string) (populator.MappingContext, error) {
+func (v *VantaraCloner) EnsureClonnerIgroup(xcopyInitiatorGroup []string, hbaUIDs []string) (populator.MappingContext, error) {
 	var r map[string]interface{}
 
 	r, _ = v.api.VantaraStorage(GETPORTDETAILS)
@@ -169,7 +140,8 @@ func (v *VantaraCloner) EnsureClonnerIgroup(xcopyInitiatorGroup []string, esxIQN
 		klog.Errorf("Error parsing JSON: %s", err)
 		return nil, err
 	}
-	ret := FindHostGroupIDs(jsonData, v.api.VantaraObj["xcopyInitiatorGroup"].([]string))
+
+	ret := FindHostGroupIDs(jsonData, hbaUIDs)
 
 	jsonBytes, _ = json.MarshalIndent(ret, "", "  ")
 	klog.Infof("HostGroupIDs: %s", string(jsonBytes))
