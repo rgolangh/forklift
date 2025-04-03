@@ -53,7 +53,7 @@ func getStorageEnvVars() (map[string]interface{}, error) {
 		"port":         os.Getenv("STORAGE_PORT"),
 		"userID":       os.Getenv("STORAGE_USERNAME"),
 		"password":     os.Getenv("STORAGE_PASSWORD"),
-		"HostGroupID":  hgids,
+		"hostGroupIds": hgids,
 	}
 	klog.Infof(
 		"storageId: ", storageEnvVars["storageId"],
