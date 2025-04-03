@@ -38,7 +38,7 @@ func getStorageEnvVars() (map[string]interface{}, error) {
 	envHGs := os.Getenv("HOSTGROUP_ID_LIST")
 	hgids := []string{}
 	if envHGs != "" {
-		items := strings.Split(envHGs, ",")
+		items := strings.Split(envHGs, ":")
 		for _, item := range items {
 			hg := strings.TrimSpace(item)
 			if hg != "" {
@@ -67,6 +67,7 @@ func getStorageEnvVars() (map[string]interface{}, error) {
 }
 
 func getNewVantaraStorageAPIfromEnv(envVars map[string]interface{}, vantaraObj VantaraObject) *VantaraStorageAPI {
+	vantaraObj["envHostGroupIds"] = envVars["hostGroupIds"].([]string)
 	return NewVantaraStorageAPI(envVars["storageId"].(string), envVars["restServerIP"].(string), envVars["port"].(string), envVars["userID"].(string), envVars["password"].(string), vantaraObj)
 }
 
@@ -139,8 +140,8 @@ func (v *VantaraCloner) GetNaaID(lun populator.LUN) populator.LUN {
 }
 
 func (v *VantaraCloner) EnsureClonnerIgroup(xcopyInitiatorGroup []string, hbaUIDs []string) (populator.MappingContext, error) {
-	if v.api.VantaraObj["hostGroupIds"] != nil {
-		hgids := v.api.VantaraObj["hostGroupIds"].([]string)
+	if v.api.VantaraObj["envHostGroupIds"] != nil {
+		hgids := v.api.VantaraObj["envHostGroupIds"].([]string)
 		klog.Infof("HostGroupIDs used from environment variable: %s", hgids)
 		return populator.MappingContext{"hostGroupIds": hgids}, nil
 	}
