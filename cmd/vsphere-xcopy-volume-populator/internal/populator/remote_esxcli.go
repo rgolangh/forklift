@@ -3,7 +3,9 @@ package populator
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"strings"
+	"time"
 
 	"github.com/kubev2v/forklift/cmd/vsphere-xcopy-volume-populator/internal/vmware"
 	"k8s.io/klog/v2"
@@ -133,11 +135,21 @@ func (p *RemoteEsxcliPopulator) Populate(sourceVMDKFile string, volumeHandle str
 	targetLUN := fmt.Sprintf("/vmfs/devices/disks/naa.%s%s", lun.ProviderID, lun.SerialNumber)
 	klog.Infof("resolved lun serial number %s with IQN %s to lun %s", lun.SerialNumber, lun.IQN, targetLUN)
 
-	_, err = p.VSphereClient.RunEsxCommand(context.Background(), host, []string{"storage", "core", "adapter", "rescan", "-a", "1"})
+	retries := 3
+	for i := 3; i > 0; i-- {
+		_, err = p.VSphereClient.RunEsxCommand(context.Background(), host, []string{"storage", "core", "adapter", "rescan", "-a", "1"})
+		if err != nil {
+			klog.Errorf("failed to rescan adapters, probably in progress. Rerty %d/%d", i, retries)
+			time.Sleep(time.Duration(rand.Intn(10)))
+		} else {
+			break
+		}
+	}
 	if err != nil {
 		return err
 	}
 	naa := fmt.Sprintf("naa.%s%s", lun.ProviderID, lun.SerialNumber)
+
 	_, err = p.VSphereClient.RunEsxCommand(context.Background(), host, []string{"storage", "core", "device", "list", "-d", naa})
 	if err != nil {
 		return fmt.Errorf("failed to locate the target LUN %s. Check the LUN details and the host mapping response: %s", naa, err)

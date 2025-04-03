@@ -1,9 +1,9 @@
 # vsphere-xcopy-volume-populator
 
 ## Forklift Controller
-When the feature flag `feature_copy_offload` is true (off by default), the controller will
-consult a config map to decided if VM disk from VMWare could be copied
-by the storage backend(offloaded) into the newly created PVC.
+When the feature flag `feature_copy_offload` is true (off by default), the controller
+consult the storagemaps offload plugin configuration, to decided if VM disk from
+VMWare could be copied by the storage backend(offloaded) into the newly created PVC.
 When the controller creates the PVC for the v2v pod it will also create
 a volume popoulator resource of type VSphereXcopyVolumePopulator and set
 the filed `dataSourceRef` in the PVC to reference it.
@@ -53,48 +53,52 @@ When a user is picking a VM to migrate to OpenShift there is no direct indicatio
 of that info, other then if the current storage mapping supports it or not.
 The plan should know if a specific disk should use the XCOPY populator by matching
 the source vmdk data-store with the storage class. The supported pair of such
-mapping is specified in a config map name 'copy-offload-mapping' along with 
-other storage specific identifiers.
+mapping is specified in the migration plan storagemap object.
 
 To detect those conditions this heuristics is used:
 - locate the LUN where the vmdk disk is on iSCSI or FC
 - the PVC CSI provisioner creates LUNs on the same system as the VMFS where vmdks are
 
-An example ConfigMap for the mapping:
+An example StorageMap for copy offload: 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: forklift.konveyor.io/v1beta1
+kind: StorageMap
 metadata:
-  name: copy-offload-mapping
+  name: copy-offload
   namespace: openshift-mtv
-data:
-    # name of the storage class
-    storageClassMapping: |
-        storage-class-1:
-            storageVendorProduct: productX
-            # secret with the specific storage vendor under the forklift controller namespace
-            storageVendorSecretRef: ontap-1
-            vsphereProviders:
-              - name: vsphere-provider-id-1
-                dataStores:
-                  - ds-iscsi-1
-                  - ds-iscsi-2
-              - name: vsphere-provider-id-2
-                dataStores:
-                  - ds-iscsi-3
+spec:
+  map:
+  - destination:
+      storageClass: YOUR_STORAGE_CLASS  #1)
+    offloadPlugin:
+      vsphereXcopyConfig:
+        secretRef: SECRET_WITH_ONTAP_CREDS #2)
+        storageVendorProduct: ontap #3)
+    source:
+      id: DATASTORE_ID #4) eg datastore-18601
+  provider:
+    destination:
+      apiVersion: forklift.konveyor.io/v1beta1
+      kind: Provider
+      name: host
+      namespace: openshift-mtv
+      uid: YOUR_HOST_PROVIDER_ID #5)
+    source:
+      apiVersion: forklift.konveyor.io/v1beta1
+      kind: Provider
+      name: YOUR_VSPHERE_PROVIDER_NAME #6)
+      namespace: openshift-mtv
+      uid: YOUR_VSPHERE_PROVIDER_ID  #7)
 
-        storage-class-2:
-            storageVendorProduct: productY
-            storageVendorSecretRef: ontap-2
-            vsphere-provider-id-def:
-                - ds-iscsi-5
-                - ds-iscsi-6
 ```
 
-According to this ConfigMap a migration plan to for 'vm-5' with storage mapping
-of 'ds-iscsi-3' to storageClass 'storage-class-2' will use the populator with
-storage product vendor 'productY'.
-
+1. the storage class for the target PVC of the VM
+2. secret with the storage provider credentials 
+3. string that identifies the storage product.
+4. datastore ID as set by vSphere 
+5. host provider ID
+6. vsphere provider name
+7. vsphere provider id
 
 # Troubleshooting
 
