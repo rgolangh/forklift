@@ -1,10 +1,19 @@
 package vantara
 
+import (
+	"strings"
+
+	"k8s.io/klog/v2"
+)
+
 type Logins struct {
-	HostGroupId string `json:"hostGroupId"`
-	Islogin     string `json:"isLogin"`
-	LoginWWN    string `json:"loginWwn"`
-	WWNNickName string `json:"wwnNickName"`
+	HostGroupId     string `json:"hostGroupId"`
+	Islogin         string `json:"isLoggedin"`
+	LoginWWN        string `json:"loginWwn"`
+	WWNNickName     string `json:"wwnNickName"`
+	IscsiNickName   string `json:"iscsiNickName"`
+	IscsiTargetName string `json:"iscsiTargetName"`
+	LoginIscsiName  string `json:"loginIscsiName"`
 }
 
 type DataEntry struct {
@@ -17,21 +26,41 @@ type JSONData struct {
 	Data []DataEntry `json:"data"`
 }
 
-func FindHostGroupIDs(jsonData JSONData, loginWWNs []string) []Logins {
+func FindHostGroupIDs(jsonData JSONData, hbaUIDs []string) []Logins {
 	results := []Logins{}
 	for _, entry := range jsonData.Data {
 		for _, login := range entry.Logins {
-			for _, wwn := range loginWWNs {
-				if login.LoginWWN == wwn {
-					output := Logins{
-						HostGroupId: login.HostGroupId,
-						Islogin:     login.Islogin,
-						LoginWWN:    login.LoginWWN,
-						WWNNickName: login.WWNNickName,
+			for _, uid := range hbaUIDs {
+				if strings.HasPrefix(uid, "fc.") {
+					parts := strings.Split(strings.TrimPrefix(uid, "fc."), "")
+					wwnn := ""
+					if len(parts) != 2 {
+						klog.Errorf("Invalid FC WWN: %s", uid)
+						continue
+					} else {
+						wwnn = strings.ToUpper(parts[1])
 					}
-					results = append(results, output)
+					if login.LoginWWN == wwnn {
+						output := Logins{
+							HostGroupId:     login.HostGroupId,
+							Islogin:         login.Islogin,
+							LoginWWN:        login.LoginWWN,
+							WWNNickName:     login.WWNNickName,
+							IscsiNickName:   "",
+							IscsiTargetName: "",
+							LoginIscsiName:  "",
+						}
+						results = append(results, output)
+					}
+				} else if strings.HasPrefix(uid, "iqn.") {
+					continue
+				} else if strings.HasPrefix(uid, "nqn.") {
+					continue
+				} else {
+					klog.Errorf("Unknown UID type: %s", uid)
 				}
 			}
+
 		}
 	}
 	return results
