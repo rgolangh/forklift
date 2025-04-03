@@ -67,7 +67,6 @@ func getStorageEnvVars() (map[string]interface{}, error) {
 }
 
 func getNewVantaraStorageAPIfromEnv(envVars map[string]interface{}, vantaraObj VantaraObject) *VantaraStorageAPI {
-	vantaraObj["hostGroupIds"] = envVars["hostGroupIds"].([]string)
 	return NewVantaraStorageAPI(envVars["storageId"].(string), envVars["restServerIP"].(string), envVars["port"].(string), envVars["userID"].(string), envVars["password"].(string), vantaraObj)
 }
 
