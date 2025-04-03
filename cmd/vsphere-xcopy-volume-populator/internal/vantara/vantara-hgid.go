@@ -8,7 +8,7 @@ import (
 
 type Logins struct {
 	HostGroupId     string `json:"hostGroupId"`
-	Islogin         string `json:"isLoggedin"`
+	Islogin         string `json:"isLogin"`
 	LoginWWN        string `json:"loginWwn"`
 	WWNNickName     string `json:"wwnNickName"`
 	IscsiNickName   string `json:"iscsiNickName"`
