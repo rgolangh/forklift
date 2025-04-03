@@ -61,7 +61,7 @@ func getStorageEnvVars() (map[string]interface{}, error) {
 		"port: ", storageEnvVars["port"],
 		"userID: ", "",
 		"password: ", "",
-		"HostGroupID: ", storageEnvVars["HostGroupID"],
+		"hostGroupID: ", storageEnvVars["hostGroupIds"],
 	)
 	return storageEnvVars, nil
 }
