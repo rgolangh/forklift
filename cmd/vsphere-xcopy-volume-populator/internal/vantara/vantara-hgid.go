@@ -32,7 +32,7 @@ func FindHostGroupIDs(jsonData JSONData, hbaUIDs []string) []Logins {
 		for _, login := range entry.Logins {
 			for _, uid := range hbaUIDs {
 				if strings.HasPrefix(uid, "fc.") {
-					parts := strings.Split(strings.TrimPrefix(uid, "fc."), "")
+					parts := strings.Split(strings.TrimPrefix(uid, "fc."), ":")
 					wwnn := ""
 					if len(parts) != 2 {
 						klog.Errorf("Invalid FC WWN: %s", uid)
