@@ -104,7 +104,7 @@ func TestPopulator(t *testing.T) {
 	for _, tcase := range tests {
 		t.Run(tcase.name, func(t *testing.T) {
 			progressCh := make(chan int)
-			quitCh := make(chan string)
+			quitCh := make(chan error)
 			tcase.setup()
 			result := underTest.Populate(tcase.sourceVMDK, tcase.targetPVC, progressCh, quitCh)
 			assert.Equal(t, result, tcase.want)

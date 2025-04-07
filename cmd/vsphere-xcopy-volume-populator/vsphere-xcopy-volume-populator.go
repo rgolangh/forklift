@@ -12,8 +12,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/client-go/util/cert"
 
-	"github.com/kubev2v/forklift/cmd/vsphere-xcopy-volume-populator/internal/ontap"
 	"github.com/kubev2v/forklift/cmd/vsphere-xcopy-volume-populator/internal/populator"
+	"github.com/kubev2v/forklift/cmd/vsphere-xcopy-volume-populator/internal/vantara"
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
@@ -60,13 +60,23 @@ func main() {
 	handleArgs()
 
 	var storageApi populator.StorageApi
+	fmt.Println("storageVendor: ", storageVendor)
+	storageVendor = "vantara"
 	switch storageVendor {
-	case "ontap":
-		sm, err := ontap.NewNetappClonner(storageHostname, storageUsername, storagePassword)
+	case "vantara":
+		sm, err := vantara.NewVantaraClonner(storageHostname, storageUsername, storagePassword)
 		if err != nil {
-			klog.Fatalf("failed to initialize ontap storage mapper with %s", err)
+			klog.Fatalf("failed to initialize vantara storage mapper with %s", err)
 		}
 		storageApi = &sm
+
+	case "ontap":
+		//		sm, err := ontap.NewNetappClonner(storageHostname, storageUsername, storagePassword)
+		//		if err != nil {
+		//			klog.Fatalf("failed to initialize ontap storage mapper with %s", err)
+		//		}
+		//		storageApi = &sm
+
 	default:
 		klog.Fatalf("Unsupported storage vendor %s use one of [ontap,]", storageVendor)
 	}
@@ -114,10 +124,10 @@ func main() {
 		case q := <-quitCh:
 			klog.Infof("channel quit %s", q)
 			if q != nil {
-                klog.Fatal(q)
-            }
-            return
-		} 
+				klog.Fatal(q)
+			}
+			return
+		}
 	}
 
 }
@@ -178,7 +188,7 @@ func handleArgs() {
 	flag.StringVar(&ownerUID, "owner-uid", "", "Owner UID, passed by the populator - Usually PVC ID")
 	flag.StringVar(&sourceVMDKFile, "source-vmdk", "", "File name to populate")
 	flag.StringVar(&targetPVC, "target-pvc", "", "Target PVC for population")
-	flag.StringVar(&storageVendor, "storage-vendor", "ontap", "The storage vendor to work with. Current values: [ontap,]")
+	flag.StringVar(&storageVendor, "storage-vendor", "vantara", "The storage vendor to work with. Current values: [ontap,]")
 	flag.StringVar(&secretName, "secret-name", "", "The secret holding the credentials for vSphere API and the storage vendor API")
 	flag.StringVar(&targetNamespace, "target-namespace", "", "Contents to populate file with")
 	flag.StringVar(&storageHostname, "storage-hostname", os.Getenv("STORAGE_HOSTNAME"), "The storage vendor api hostname")

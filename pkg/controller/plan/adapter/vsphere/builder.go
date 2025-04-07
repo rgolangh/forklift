@@ -147,6 +147,7 @@ var osMap = map[string]string{
 // Regex which matches the snapshot identifier suffix of a
 // vSphere disk backing file.
 var backingFilePattern = regexp.MustCompile(`-\d\d\d\d\d\d.vmdk`)
+var vmdkPathReplaces = strings.NewReplacer("[", "_", "]", "_", " ", "_", "/", "_")
 
 // vSphere builder.
 type Builder struct {
@@ -1051,7 +1052,7 @@ func (r *Builder) SupportsVolumePopulators() bool {
 	dsMapIn := r.Context.Map.Storage.Spec.Map
 	klog.Infof("####### RGOLAN storage map %+v", dsMapIn)
 	for _, m := range dsMapIn {
-	    klog.Infof("####### RGOLAN mapping pair source %+v, dest %+v", m.Source, m.Destination)
+		klog.Infof("####### RGOLAN mapping pair source %+v, dest %+v", m.Source, m.Destination)
 		ref := m.Source
 		ds := &model.Datastore{}
 		err := r.Source.Inventory.Find(ds, ref)
@@ -1063,12 +1064,12 @@ func (r *Builder) SupportsVolumePopulators() bool {
 
 		/// LEFT IN MIDDLE - NEED TO GET THE LOGIC STRAIGHT && EFFICIENT
 		if m.OffloadPlugin != nil && m.OffloadPlugin.VSphereXcopyPluginConfig != nil {
-            klog.Infof("####### RGOLAN found offload plugin: config %+v on ds map  %+v",m.OffloadPlugin.VSphereXcopyPluginConfig, dsMapIn)
-		    return true	
+			klog.Infof("####### RGOLAN found offload plugin: config %+v on ds map  %+v", m.OffloadPlugin.VSphereXcopyPluginConfig, dsMapIn)
+			return true
 
 		}
 	}
-    return false
+	return false
 }
 
 // PopulatorVolumes is needed for vSphereXcopyVolomePopulator
@@ -1101,9 +1102,9 @@ func (r *Builder) PopulatorVolumes(vmRef ref.Ref, annotations map[string]string,
 					return
 				}
 				r.Log.Info(fmt.Sprintf("getting storage mapping by storage class %q and datastore %v datastore name %s datastore", storageClass, disk.Datastore, disk.Datastore))
-                vsphereInstance := r.Context.Plan.Provider.Source.GetName()
-                storageVendorProduct :=  mapped.OffloadPlugin.VSphereXcopyPluginConfig.StorageVendorProduct
-                storageVendorSecretRef := mapped.OffloadPlugin.VSphereXcopyPluginConfig.SecretRef 
+				vsphereInstance := r.Context.Plan.Provider.Source.GetName()
+				storageVendorProduct := mapped.OffloadPlugin.VSphereXcopyPluginConfig.StorageVendorProduct
+				storageVendorSecretRef := mapped.OffloadPlugin.VSphereXcopyPluginConfig.SecretRef
 
 				r.Log.Info(fmt.Sprintf("vsphere provider %v storage vendor product %v storage secret name %v ", vsphereInstance, storageVendorProduct, storageVendorSecretRef))
 				if coldLocal && vsphereInstance != "" {

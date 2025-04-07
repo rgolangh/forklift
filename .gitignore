@@ -40,3 +40,5 @@ vendor/**/Dockerfile.vcsim
 vendor/**/Dockerfile.govc
 cmd/vsphere-xcopy-volume-populator/vmkfstools-wrapper/vmkfstools-wrapper.vib
 vmware_vault.yaml
+.env
+.github/workflows/build-push-images-hal.yml
