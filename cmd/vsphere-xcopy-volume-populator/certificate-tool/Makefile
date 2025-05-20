@@ -21,7 +21,7 @@ CONTROLLER_PATH  = $(shell yq e '.controller-path' $(CONFIG_FILE))
 STORAGE_CLASS_NAME  = $(shell yq e '.storage-class-name' $(CONFIG_FILE))
 SECRET_NAME =  $(shell yq e '.secret-name' $(CONFIG_FILE))
 
-REQUIRED_VARS := STORAGE_USER STORAGE_PASSWORD STORAGE_URL VSPHERE_USER VSPHERE_PASSWORD VSPHERE_URL STORAGE_CLASS_NAME
+REQUIRED_VARS := STORAGE_USERNAME STORAGE_PASSWORD STORAGE_HOSTNAME GOVMOMI_USERNAME GOVMOMI_PASSWORD GOVMOMI_HOSTNAME STORAGE_CLASS_NAME
 
 $(foreach var,$(REQUIRED_VARS),\
   $(if $(value $(var)),,$(error Environment variable $(var) is required)))
@@ -67,12 +67,12 @@ prepare: check-tools build ## Run certificate-tool create-env subcommand.
 			--test-populator-image  "$(TEST_POPULATOR_IMAGE)" \
 			--controller-path       "$(CONTROLLER_PATH)" \
 			--test-image-label      "$(TEST_IMAGE_LABEL)" \
-			--storage-user          "$(STORAGE_USER)" \
+			--storage-user          "$(STORAGE_USERNAME)" \
 			--storage-password      "$(STORAGE_PASSWORD)" \
-			--storage-url           "$(STORAGE_URL)" \
-			--vsphere-user          "$(VSPHERE_USER)" \
-			--vsphere-password      "$(VSPHERE_PASSWORD)" \
-			--vsphere-url           "$(VSPHERE_URL)"
+			--storage-url           "$(STORAGE_HOSTNAME)" \
+			--vsphere-user          "$(GOVMOMI_USERNAME)" \
+			--vsphere-password      "$(GOVMOMI_PASSWORD)" \
+			--vsphere-url           "$(GOVMOMI_HOSTNAME)"
 
 
 
@@ -80,9 +80,9 @@ create-vm: build ## Run certificate-tool create-vm subcommand.
 	@echo "creating vm..."
 	./$(BINARY) create-vm \
 		--vm-name               $(VM_NAME) \
-		--vsphere-user          "$(VSPHERE_USER)" \
-		--vsphere-password      "$(VSPHERE_PASSWORD)" \
-		--vsphere-url           "$(VSPHERE_URL)/sdk" \
+		--vsphere-user          "$(GOVMOMI_USERNAME)" \
+		--vsphere-password      "$(GOVMOMI_PASSWORD)" \
+		--vsphere-url           "$(GOVMOMI_HOSTNAME)/sdk" \
 		--data-center           "Eco-Datacenter" \
 		--local-vmdk-path        $(VMDK_PATH) \
 		--data-store             $(DATA_STORE)
@@ -105,9 +105,9 @@ clean: ## Clean built artifacts.
 	@$(KUBECTL) delete namespace $(POD_NAMESPACE)
 	./$(BINARY) destroy-vm \
 		--vm-name 				$(VM_NAME) \
-		--vsphere-user          "$(VSPHERE_USER)" \
-		--vsphere-password      "$(VSPHERE_PASSWORD)" \
-		--vsphere-url           "$(VSPHERE_URL)/sdk" \
+		--vsphere-user          "$(GOVMOMI_USERNAME)" \
+		--vsphere-password      "$(GOVMOMI_PASSWORD)" \
+		--vsphere-url           "$(GOVMOMI_HOSTNAME)/sdk" \
 		--data-center           "Eco-Datacenter" \
 		--data-store             $(DATA_STORE)
 

@@ -38,24 +38,24 @@ func init() {
 	)
 	RootCmd.PersistentFlags().StringVar(
 		&vsphereUser,
-		"vsphere-user", os.Getenv("VSPHERE_USER"),
-		"vSphere username (or from $VSPHERE_USER)",
+		"vsphere-user", os.Getenv("GOVMOMI_USERNAME"),
+		"vSphere username (or from $GOVMOMI_USERNAME)",
 	)
 	RootCmd.PersistentFlags().StringVar(
 		&vspherePassword,
-		"vsphere-password", os.Getenv("VSPHERE_PASSWORD"),
-		"vSphere password (or from $VSPHERE_PASSWORD)",
+		"vsphere-password", os.Getenv("GOVMOMI_PASSWORD"),
+		"vSphere password (or from $GOVMOMI_PASSWORD)",
 	)
 	RootCmd.PersistentFlags().StringVar(
 		&vsphereUrl,
-		"vsphere-url", os.Getenv("VSPHERE_URL"),
-		"vSphere/Govmomi endpoint (or from $VSPHERE_URL)",
+		"vsphere-url", os.Getenv("GOVMOMI_HOSTNAME"),
+		"vSphere/Govmomi endpoint (or from $GOVMOMI_HOSTNAME)",
 	)
 
 	RootCmd.PersistentFlags().StringVar(
 		&storageUser,
-		"storage-user", os.Getenv("STORAGE_USER"),
-		"Storage system username (or from $STORAGE_USER)",
+		"storage-user", os.Getenv("STORAGE_USERNAME"),
+		"Storage system username (or from $STORAGE_USERNAME)",
 	)
 	RootCmd.PersistentFlags().StringVar(
 		&storagePassword,
@@ -64,8 +64,8 @@ func init() {
 	)
 	RootCmd.PersistentFlags().StringVar(
 		&storageUrl,
-		"storage-url", os.Getenv("STORAGE_URL"),
-		"Storage system endpoint URL (or from $STORAGE_URL)",
+		"storage-url", os.Getenv("STORAGE_HOSTNAME"),
+		"Storage system endpoint URL (or from $STORAGE_HOSTNAME)",
 	)
 	RootCmd.PersistentFlags().StringVar(
 		&storageClassName,

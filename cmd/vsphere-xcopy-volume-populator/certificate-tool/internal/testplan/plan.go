@@ -2,10 +2,13 @@ package testplan
 
 import (
 	"certificate-tool/internal/utils"
+	"certificate-tool/pkg/storage"
 	"context"
 	"fmt"
-	"gopkg.in/yaml.v3"
+	"os"
 	"time"
+
+	"gopkg.in/yaml.v3"
 
 	"k8s.io/client-go/kubernetes"
 )
@@ -45,7 +48,7 @@ func (tp *TestPlan) FormatOutput() ([]byte, error) {
 	output := struct {
 		Metadata struct {
 			Storage struct {
-				Name                 string `yaml:"name"`
+				storage.Storage
 				StorageVendorProduct string `yaml:"storageVendorProduct"`
 				ConnectionType       string `yaml:"connectionType"`
 			} `yaml:"storage"`
@@ -56,8 +59,20 @@ func (tp *TestPlan) FormatOutput() ([]byte, error) {
 		Image: tp.Image,
 		Tests: tp.TestCases,
 	}
-	output.Metadata.Storage.Name = "TODO"
-	output.Metadata.Storage.StorageVendorProduct = "TODO"
+
+	c := storage.StorageCredentials{
+		Hostname:      os.Getenv("STORAGE_HOSTNAME"),
+		Username:      os.Getenv("STORAGE_USERNAME"),
+		Password:      os.Getenv("STORAGE_PASSWORD"),
+		SSLSkipVerify: os.Getenv("STORAGE_SKIP_SSL_VERIFICATION") == "true",
+		VendorProduct: tp.StorageVendorProduct,
+	}
+	storageInfo, err  := storage.StorageInfo(c)
+	if err != nil {
+		return nil, err
+	}
+	output.Metadata.Storage.Storage = storageInfo
+	output.Metadata.Storage.StorageVendorProduct = tp.StorageVendorProduct
 	output.Metadata.Storage.ConnectionType = "TODOTODOOOOTODOTODDO"
 	return yaml.Marshal(output)
 }
