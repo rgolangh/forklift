@@ -9,7 +9,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/kubev2v/forklift/cmd/vsphere-xcopy-volume-populator/internal/populator"
-	storage_mocks "github.com/kubev2v/forklift/cmd/vsphere-xcopy-volume-populator/internal/populator/mocks"
+	populator_mocks "github.com/kubev2v/forklift/cmd/vsphere-xcopy-volume-populator/internal/populator/mocks"
 	vmware_mocks "github.com/kubev2v/forklift/cmd/vsphere-xcopy-volume-populator/internal/vmware/mocks"
 	"github.com/vmware/govmomi/cli/esx"
 	"github.com/vmware/govmomi/object"
@@ -25,15 +25,17 @@ var _ = Describe("Populator", func() {
 	var (
 		mockCtrl      *gomock.Controller
 		vmwareClient  *vmware_mocks.MockClient
-		storageClient *storage_mocks.MockStorageApi
+		storageClient *populator_mocks.MockStorageApi
 		underTest     populator.RemoteEsxcliPopulator
+		hostLocker    populator.Hostlocker
 		dummyHost     *object.HostSystem
 	)
 
 	BeforeEach(func() {
 		mockCtrl = gomock.NewController(GinkgoT())
 		vmwareClient = vmware_mocks.NewMockClient(mockCtrl)
-		storageClient = storage_mocks.NewMockStorageApi(mockCtrl)
+		storageClient = populator_mocks.NewMockStorageApi(mockCtrl)
+		hostLocker = populator_mocks.NewMockHostlocker(mockCtrl)
 		underTest = populator.RemoteEsxcliPopulator{
 			VSphereClient: vmwareClient,
 			StorageApi:    storageClient,
@@ -63,7 +65,7 @@ var _ = Describe("Populator", func() {
 
 			go func() {
 				defer GinkgoRecover()
-				underTest.Populate(tc.sourceVmId, tc.sourceVMDK, populator.PersistentVolume{Name: tc.targetPVC}, progressCh, quitCh)
+				underTest.Populate(tc.sourceVmId, tc.sourceVMDK, populator.PersistentVolume{Name: tc.targetPVC}, hostLocker, progressCh, quitCh)
 			}()
 
 			if tc.want != nil {
