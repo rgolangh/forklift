@@ -807,6 +807,47 @@ func (p *Primera3ParClientWsImpl) setVolumeSnapCPG(volumeName, snapCPG string) e
 	return nil
 }
 
+func (p *Primera3ParClientWsImpl) deleteVolumeWithUnmap(volumeName string) error {
+	type vlunEntry struct {
+		VolumeName string `json:"volumeName"`
+		LUN        int    `json:"lun"`
+		Hostname   string `json:"hostname"`
+	}
+
+	reqURL := fmt.Sprintf("%s/api/v1/vluns", p.BaseURL)
+	req, err := http.NewRequest("GET", reqURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to list VLUNs: %w", err)
+	}
+	req.URL.RawQuery = "query=" + url.PathEscape(fmt.Sprintf("%q", fmt.Sprintf("volumeName EQ '%s'", volumeName)))
+
+	var response struct {
+		Members []vlunEntry `json:"members"`
+	}
+	if err := p.doRequestUnmarshalResponse(req, "listVLUNs", &response); err != nil {
+		return fmt.Errorf("failed to query VLUNs for volume %s: %w", volumeName, err)
+	}
+
+	for _, vlun := range response.Members {
+		klog.Infof("Removing VLUN export: volume=%s lun=%d host=%s", vlun.VolumeName, vlun.LUN, vlun.Hostname)
+		deleteURL := fmt.Sprintf("%s/api/v1/vluns/%s,%d,%s", p.BaseURL, url.PathEscape(volumeName), vlun.LUN, url.PathEscape(vlun.Hostname))
+		delReq, err := http.NewRequest("DELETE", deleteURL, nil)
+		if err != nil {
+			return fmt.Errorf("failed to create VLUN delete request: %w", err)
+		}
+		resp, err := p.doRequest(delReq, "removeVLUN")
+		if err != nil {
+			return fmt.Errorf("failed to remove VLUN for host %s: %w", vlun.Hostname, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+			return fmt.Errorf("failed to remove VLUN for host %s: status %d", vlun.Hostname, resp.StatusCode)
+		}
+	}
+
+	return p.deleteVolume(volumeName)
+}
+
 func (p *Primera3ParClientWsImpl) deleteVolume(volumeName string) error {
 	reqURL := fmt.Sprintf("%s/api/v1/volumes/%s", p.BaseURL, url.PathEscape(volumeName))
 
@@ -855,20 +896,10 @@ func (p *Primera3ParClientWsImpl) CopyVolume(sourceVolName string, destVolName s
 		klog.Infof("Source volume %s has no snapCPG but WSAPI build %d >= %d — array manages snap space at pool level", sourceName, apiBuild, wsApiBuild2023)
 	}
 
-	// Rename the CSI-provisioned dest volume aside so we can create a snapshot
-	// with the same name. The CSI driver locates volumes by name, so the
-	// snapshot seamlessly takes its place after promotion.
 	tempName := prefixOfString(uuid.New().String(), 31)
-	klog.Infof("Renaming dest volume %s -> %s before snapshot copy", destName, tempName)
-	if err := p.renameVolume(destName, tempName); err != nil {
-		return fmt.Errorf("failed to rename dest volume aside: %w", err)
-	}
 
-	// Step 1: Create a read-only snapshot of the source with the dest name.
-	// This is instant (CoW) — no data is copied.
-	klog.Infof("Creating snapshot of %s as %s", sourceName, destName)
-	if err := p.createSnapshot(sourceName, destName); err != nil {
-		p.rollbackRename(tempName, destName)
+	klog.Infof("Creating snapshot of %s as %s", sourceName, tempName)
+	if err := p.createSnapshot(sourceName, tempName); err != nil {
 		return fmt.Errorf("failed to create snapshot: %w", err)
 	}
 
@@ -876,28 +907,26 @@ func (p *Primera3ParClientWsImpl) CopyVolume(sourceVolName string, destVolName s
 		progress <- 50
 	}
 
-	// Step 2: Promote the snapshot to an independent writable volume.
-	// With online=true the volume is writable immediately; background
-	// data separation happens asynchronously.
-	klog.Infof("Promoting snapshot %s to independent volume", destName)
-	if err := p.promoteVirtualCopy(destName); err != nil {
-		p.deleteVolume(destName)
-		p.rollbackRename(tempName, destName)
+	klog.Infof("Promoting snapshot %s to independent volume", tempName)
+	if err := p.promoteVirtualCopy(tempName); err != nil {
+		p.deleteVolume(tempName)
 		return fmt.Errorf("failed to promote snapshot: %w", err)
 	}
 
-	if err := p.deleteVolume(tempName); err != nil {
-		klog.Warningf("Failed to delete old volume %s (non-fatal): %v", tempName, err)
+	// Delete the original CSI dest volume (unmap VLUNs first) to clear
+	// stale SCSI paths on the node, then rename the promoted snapshot
+	// to take its place. The CSI driver locates volumes by name.
+	klog.Infof("Deleting original dest volume %s", destName)
+	if err := p.deleteVolumeWithUnmap(destName); err != nil {
+		return fmt.Errorf("failed to delete dest volume %s: %w", destName, err)
+	}
+
+	klog.Infof("Renaming promoted snapshot %s -> %s", tempName, destName)
+	if err := p.renameVolume(tempName, destName); err != nil {
+		return fmt.Errorf("failed to rename snapshot to dest: %w", err)
 	}
 
 	return nil
-}
-
-func (p *Primera3ParClientWsImpl) rollbackRename(tempName, origName string) {
-	klog.Warningf("Rolling back: renaming %s -> %s", tempName, origName)
-	if err := p.renameVolume(tempName, origName); err != nil {
-		klog.Errorf("Rollback rename failed: %v", err)
-	}
 }
 
 func (p *Primera3ParClientWsImpl) createSnapshot(sourceVolName, snapshotName string) error {
